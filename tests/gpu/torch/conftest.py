@@ -16,7 +16,7 @@
 import pytest
 import torch
 import torch.distributed as dist
-from _test_utils.torch_dist.dist_utils import init_process
+from _test_utils.torch.distributed.utils import init_process
 
 import modelopt.torch.opt as mto
 
@@ -38,6 +38,12 @@ def need_2_gpus():
 def need_8_gpus():
     if torch.cuda.device_count() < 8:
         pytest.skip("Need at least 8 GPUs to run this test")
+
+
+@pytest.fixture
+def need_4_gpus():
+    if torch.cuda.device_count() < 4:
+        pytest.skip("Need at least 4 GPUs to run this test")
 
 
 @pytest.fixture(scope="module")

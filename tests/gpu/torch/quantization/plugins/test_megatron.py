@@ -18,18 +18,19 @@ from functools import partial
 import pytest
 import torch
 from _test_utils.import_helper import skip_if_no_megatron
-from _test_utils.torch_dist.dist_utils import spawn_multiprocess_job
-from _test_utils.torch_dist.plugins.megatron_common import (
-    MegatronModel,
-    get_mcore_gpt_model,
+from _test_utils.torch.distributed.utils import spawn_multiprocess_job
+from _test_utils.torch.megatron.models import MegatronModel, get_mcore_gpt_model
+from _test_utils.torch.megatron.utils import (
+    compare_amax_sync_across_expert_parallel,
+    copy_weights_from_grouped_to_non_grouped,
     initialize_for_megatron,
     run_mcore_inference,
     sharded_state_dict_test_helper,
 )
-from _test_utils.torch_misc import set_seed
-from _test_utils.torch_quantization.models import RegularQuantModelForTP
-from _test_utils.torch_quantization.quant_utils import get_model_size
-from _test_utils.torch_quantization.quantize_common import (
+from _test_utils.torch.misc import set_seed
+from _test_utils.torch.quantization.models import RegularQuantModelForTP
+from _test_utils.torch.quantization.quant_utils import get_model_size
+from _test_utils.torch.quantization.quantize_common import (
     auto_quantize_helper,
     data_tensor_context_parallel_test_helper,
 )
@@ -42,6 +43,8 @@ from megatron.core.parallel_state import (
     get_tensor_model_parallel_group,
 )
 from megatron.core.tensor_parallel.layers import ColumnParallelLinear, RowParallelLinear
+from megatron.core.transformer.moe.experts import SequentialMLP, TEGroupedMLP
+from megatron.core.transformer.moe.router import TopKRouter
 
 import modelopt
 import modelopt.torch.opt as mto
@@ -227,38 +230,59 @@ def test_data_tensor_context_parallel(need_8_gpus, config):
     )
 
 
-def _gpt_model_provider(tp_size: int, hidden_size=256, vocab_size=64, meta_device=False):
+def _gpt_model_provider(
+    tp_size: int,
+    hidden_size=256,
+    vocab_size=64,
+    num_moe_experts=None,
+    moe_grouped_gemm=False,
+    meta_device=False,
+    ep_size=1,
+    etp_size=None,
+    use_te=False,
+    transformer_impl="local",
+):
     """Build the model."""
 
     if meta_device:
         with torch.device("meta"):
             gpt_model = get_mcore_gpt_model(
                 tensor_model_parallel_size=tp_size,
+                expert_model_parallel_size=ep_size,
+                expert_tensor_parallel_size=etp_size,
                 num_layers=4,
                 ffn_hidden_size=None,
                 num_attention_heads=8,
                 activation_func="squared_relu",
-                transformer_impl="local",
+                transformer_impl=transformer_impl,
                 hidden_size=hidden_size,
                 vocab_size=vocab_size,
                 use_cpu_initialization=meta_device,
+                num_moe_experts=num_moe_experts,
+                moe_grouped_gemm=moe_grouped_gemm,
+                use_te=use_te,
             )
     else:
         gpt_model = get_mcore_gpt_model(
             tensor_model_parallel_size=tp_size,
+            expert_model_parallel_size=ep_size,
+            expert_tensor_parallel_size=etp_size,
             num_layers=4,
             ffn_hidden_size=None,
             num_attention_heads=8,
             activation_func="squared_relu",
-            transformer_impl="local",
+            transformer_impl=transformer_impl,
             hidden_size=hidden_size,
             vocab_size=vocab_size,
+            num_moe_experts=num_moe_experts,
+            moe_grouped_gemm=moe_grouped_gemm,
+            use_te=use_te,
         ).cuda()
     return gpt_model.eval()
 
 
 def _test_sharded_state_dict(
-    tmp_path, config, hidden_size, modelopt_version, compress, meta_device, rank, size
+    tmp_path, config, hidden_size, modelopt_version, compress, meta_device, moe_config, rank, size
 ):
     # Must disable output_layer quantization since output_layer amax cannot be restore via
     # sharded_state_dict. All output_layer quantizers state are removed.
@@ -268,10 +292,44 @@ def _test_sharded_state_dict(
         mto.conversion.__version__ = modelopt_version
         mtq.plugins.megatron.__version__ = modelopt_version
 
-    initialize_for_megatron(tensor_model_parallel_size=size, seed=SEED)
+    tp_size = moe_config.get("tp_size", size)
+    ep_size = moe_config.get("ep_size", 1)
+    etp_size = moe_config.get("etp_size", None)
+    num_moe_experts = moe_config.get("num_moe_experts", None)
+    moe_grouped_gemm = moe_config.get("moe_grouped_gemm", False)
+    use_te = moe_config.get("use_te", False)
+    transformer_impl = moe_config.get("transformer_impl", "local")
 
-    model_ref = _gpt_model_provider(size, hidden_size, vocab_size=256)
-    model_test = _gpt_model_provider(size, hidden_size, vocab_size=256, meta_device=meta_device)
+    initialize_for_megatron(
+        tensor_model_parallel_size=tp_size,
+        seed=SEED,
+        expert_model_parallel_size=ep_size,
+        expert_tensor_parallel_size=etp_size,
+    )
+
+    model_ref = _gpt_model_provider(
+        tp_size,
+        hidden_size,
+        vocab_size=256,
+        num_moe_experts=num_moe_experts,
+        moe_grouped_gemm=moe_grouped_gemm,
+        use_te=use_te,
+        ep_size=ep_size,
+        etp_size=etp_size,
+        transformer_impl=transformer_impl,
+    )
+    model_test = _gpt_model_provider(
+        tp_size,
+        hidden_size,
+        vocab_size=256,
+        num_moe_experts=num_moe_experts,
+        moe_grouped_gemm=moe_grouped_gemm,
+        use_te=use_te,
+        meta_device=meta_device,
+        ep_size=ep_size,
+        etp_size=etp_size,
+        transformer_impl=transformer_impl,
+    )
 
     prompt_tokens = torch.randint(
         0, model_ref.vocab_size, (2, model_ref.max_sequence_length)
@@ -340,6 +398,8 @@ mixed_block_size_config["quant_cfg"].update(
         mtq.W4A8_AWQ_BETA_CFG,
         mtq.NVFP4_DEFAULT_CFG,
         mtq.FP8_2D_BLOCKWISE_WEIGHT_ONLY_CFG,
+        # Note: KV cache configs (FP8_KV_CFG, NVFP4_KV_CFG) are tested separately in test_kv_cache_quant
+        # They require TEDotProductAttention which needs transformer_impl="modelopt", not "local"
     ],
 )
 @pytest.mark.parametrize("compress", [False, True])
@@ -352,7 +412,9 @@ def test_homogeneous_sharded_state_dict(tmp_path, config, compress, meta_device)
 
     spawn_multiprocess_job(
         size=size,
-        job=partial(_test_sharded_state_dict, tmp_path, config, 256, None, compress, meta_device),
+        job=partial(
+            _test_sharded_state_dict, tmp_path, config, 256, None, compress, meta_device, {}
+        ),
         backend="nccl",
     )
 
@@ -367,7 +429,7 @@ def test_homogeneous_sharded_state_dict(tmp_path, config, compress, meta_device)
 def test_heterogenous_sharded_state_dict(need_2_gpus, tmp_path, config):
     spawn_multiprocess_job(
         size=2,
-        job=partial(_test_sharded_state_dict, tmp_path, config, 256, None, False, False),
+        job=partial(_test_sharded_state_dict, tmp_path, config, 256, None, False, False, {}),
         backend="nccl",
     )
 
@@ -388,7 +450,7 @@ def test_sharded_state_dict_old_checkpoints(need_2_gpus, tmp_path, config, model
     spawn_multiprocess_job(
         size=2,
         job=partial(
-            _test_sharded_state_dict, tmp_path, config, 256, modelopt_version, False, False
+            _test_sharded_state_dict, tmp_path, config, 256, modelopt_version, False, False, {}
         ),
         backend="nccl",
     )
@@ -471,3 +533,402 @@ def _test_fp8_real_quantize_helper(rank, size):
 def test_fp8_real_quantize():
     size = torch.cuda.device_count()
     spawn_multiprocess_job(size=size, job=_test_fp8_real_quantize_helper, backend="nccl")
+
+
+@pytest.mark.parametrize(
+    "config",
+    [mtq.FP8_DEFAULT_CFG, mtq.NVFP4_DEFAULT_CFG, mtq.INT4_BLOCKWISE_WEIGHT_ONLY_CFG],
+)
+@pytest.mark.parametrize("moe_grouped_gemm", [True, False])
+def test_moe_sharded_state_dict(need_4_gpus, tmp_path, config, moe_grouped_gemm):
+    if moe_grouped_gemm:
+        pytest.skip("TEGroupedMLP is not enabled in Megatron-LM currently")
+    size = torch.cuda.device_count()
+    # TODO: Add support for compress=True for TEGroupedMLP
+    moe_config = {
+        "tp_size": 2,
+        "ep_size": 2,
+        "etp_size": 2,
+        "num_moe_experts": 4,
+        "moe_grouped_gemm": moe_grouped_gemm,
+        "use_te": moe_grouped_gemm,
+        "transformer_impl": "modelopt",
+    }
+    spawn_multiprocess_job(
+        size=size,
+        job=partial(
+            _test_sharded_state_dict,
+            tmp_path,
+            config,
+            256,
+            None,
+            False,
+            False,
+            moe_config,
+        ),
+        backend="nccl",
+    )
+
+
+def _test_te_grouped_vs_sequential_quantize_helper(tp_size, ep_size, etp_size, rank, size):
+    """Test that TEGrouped and sequential MoE models produce similar amax values."""
+    initialize_for_megatron(
+        tensor_model_parallel_size=tp_size,
+        expert_model_parallel_size=ep_size,
+        expert_tensor_parallel_size=etp_size,
+        seed=SEED,
+    )
+
+    # Create input
+    prompt_tokens = torch.randint(0, 64, (2, 16)).cuda()
+
+    def forward_fn(model):
+        return megatron_prefill(model, prompt_tokens)
+
+    # Create TEGrouped MoE model
+    te_grouped_moe_model = _gpt_model_provider(
+        tp_size=tp_size,
+        ep_size=ep_size,
+        etp_size=etp_size,
+        hidden_size=32,
+        moe_grouped_gemm=True,
+        use_te=True,
+        num_moe_experts=4,
+    )
+    num_te_grouped_mlp = sum(
+        isinstance(module, TEGroupedMLP) for module in te_grouped_moe_model.modules()
+    )
+    assert num_te_grouped_mlp == 4, (
+        f"TEGrupedMoEModel has {num_te_grouped_mlp} TEGroupedMLP modules, it should have 4"
+    )
+
+    # Create sequential MoE model
+    sequential_moe_model = _gpt_model_provider(
+        tp_size=tp_size,
+        ep_size=ep_size,
+        etp_size=etp_size,
+        hidden_size=32,
+        moe_grouped_gemm=False,
+        num_moe_experts=4,
+        transformer_impl="modelopt",
+    )
+    num_sequential_mlp = sum(
+        isinstance(module, SequentialMLP) for module in sequential_moe_model.modules()
+    )
+    assert num_sequential_mlp == 4, (
+        f"SequentialMoEModel has {num_sequential_mlp} SequentialMLP modules, it should have 4"
+    )
+    # Copy weights from grouped to non-grouped model
+    copy_weights_from_grouped_to_non_grouped(te_grouped_moe_model, sequential_moe_model)
+
+    # Compare model outputs before quantization
+    te_grouped_moe_output = forward_fn(te_grouped_moe_model)
+    sequential_moe_output = forward_fn(sequential_moe_model)
+    assert torch.allclose(te_grouped_moe_output, sequential_moe_output, atol=1e-6, rtol=1e-6)
+
+    # Quantize grouped model
+    mtq.quantize(te_grouped_moe_model, mtq.FP8_DEFAULT_CFG, forward_fn)
+
+    # Quantize non-grouped model
+    mtq.quantize(sequential_moe_model, mtq.FP8_DEFAULT_CFG, forward_fn)
+
+    # Compare model outputs after quantization
+    te_grouped_moe_quant_output = forward_fn(te_grouped_moe_model)
+    sequential_moe_quant_output = forward_fn(sequential_moe_model)
+    assert torch.allclose(
+        te_grouped_moe_quant_output, sequential_moe_quant_output, atol=1e-6, rtol=1e-6
+    )
+
+
+def test_te_grouped_vs_sequential_quantize(need_4_gpus):
+    """Test that TEGrouped and sequential MoE models produce similar quantized models."""
+    pytest.skip("TEGroupedMLP is not enabled in Megatron-LM currently")
+    size = torch.cuda.device_count()
+    spawn_multiprocess_job(
+        size=size,
+        job=partial(_test_te_grouped_vs_sequential_quantize_helper, 1, 2, 2),
+        backend="nccl",
+    )
+
+
+def _test_expert_model_parallel_amax_sync(
+    tp_size, ep_size, etp_size, moe_grouped_gemm, config, rank, size
+):
+    """Test expert parallel synchronization with different configurations."""
+    initialize_for_megatron(
+        tensor_model_parallel_size=tp_size,
+        pipeline_model_parallel_size=1,
+        expert_model_parallel_size=ep_size,
+        expert_tensor_parallel_size=etp_size,
+        seed=SEED,
+    )
+
+    # Create model with expert parallelism
+    model = _gpt_model_provider(
+        tp_size=tp_size,
+        ep_size=ep_size,
+        etp_size=etp_size,
+        hidden_size=256,
+        moe_grouped_gemm=moe_grouped_gemm,
+        use_te=moe_grouped_gemm,
+        num_moe_experts=8,
+        transformer_impl="modelopt",
+    )
+
+    # Initialize ALL weights based on rank to produce different amax values
+    # to produce different amax values across ranks that need synchronization
+    weight_idx = 0
+    for name, param in model.named_parameters():
+        # Skip embeddings and any parameters without 'weight' in the name
+        if "embedding" in name.lower() or "weight" not in name.lower():
+            continue
+
+        if param.requires_grad and param.dim() >= 2:  # Only weight matrices, not biases
+            # Different constant value based on rank and parameter index
+            const_val = 0.1 + (rank * 0.5) + (weight_idx * 0.05)
+            param.data.fill_(const_val)
+            weight_idx += 1
+
+    prompt_tokens = (torch.ones((2, model.max_sequence_length)) * 0.05 + rank * 0.5).cuda().long()
+
+    # force all expert routing
+    for module in model.modules():
+        if isinstance(module, TopKRouter):
+            module.topk = module.num_experts
+
+    def forward_fn(model):
+        return megatron_prefill(model, prompt_tokens)
+
+    # quantize the model
+    model = mtq.quantize(model, config, forward_fn)
+    # Check initial sync status
+    initial_sync, quantizer_type, rank_values = compare_amax_sync_across_expert_parallel(model)
+    assert initial_sync, (
+        f"Inconsistent amax for expert {quantizer_type} across ranks: {rank_values}"
+    )
+
+    # Test if the amax values are inconsistent when distributed sync is disabled
+    mtq.model_calib.max_calibrate(model, forward_fn, distributed_sync=False)
+    inconsistent_amax, _, _ = compare_amax_sync_across_expert_parallel(
+        model, compare_across_experts=False
+    )
+
+    assert not inconsistent_amax, (
+        "Consistent amax across expert parallel ranks, "
+        "Amax should not be synchronized across expert parallel ranks since expert parallel is disabled"
+    )
+    # calibrate the model with distributed sync and test synchronization
+    mtq.model_calib.max_calibrate(model, forward_fn, distributed_sync=True)
+    for module in model.modules():
+        if hasattr(module, "sync_moe_local_experts_amax"):
+            module.sync_moe_local_experts_amax()
+
+    final_sync, quantizer_type, rank_values = compare_amax_sync_across_expert_parallel(model)
+    assert final_sync, f"Inconsistent amax for expert {quantizer_type} across ranks: {rank_values}"
+
+
+@pytest.mark.parametrize("config", [mtq.FP8_DEFAULT_CFG, mtq.INT8_DEFAULT_CFG])
+@pytest.mark.parametrize(("ep_size", "etp_size"), [(1, 2), (2, 1), (2, 2)])
+@pytest.mark.parametrize("moe_grouped_gemm", [True, False])
+def test_expert_parallel_sync(config, ep_size, etp_size, moe_grouped_gemm):
+    """Test expert model parallel synchronization."""
+    size = torch.cuda.device_count()
+    if size < ep_size * etp_size:
+        pytest.skip(f"Requires at least {ep_size * etp_size} GPUs for expert model parallel test")
+
+    if moe_grouped_gemm:
+        pytest.skip("TEGroupedMLP is not enabled in Megatron-LM currently")
+
+    spawn_multiprocess_job(
+        size=size,
+        job=partial(
+            _test_expert_model_parallel_amax_sync,
+            etp_size,  # tp_size
+            ep_size,
+            etp_size,
+            moe_grouped_gemm,
+            config,
+        ),
+        backend="nccl",
+    )
+
+
+def _test_kv_cache_quant_helper(config, rank, size):
+    """Helper function for testing KV cache quantization with TEDotProductAttention."""
+    initialize_for_megatron(
+        tensor_model_parallel_size=size, pipeline_model_parallel_size=1, seed=SEED
+    )
+
+    # Use existing infrastructure to create a minimal GPT model with TEDotProductAttention
+    # Note: transformer_impl must be "modelopt" or "transformer_engine" (not "local") to get TEDotProductAttention
+    model = get_mcore_gpt_model(
+        tensor_model_parallel_size=size,
+        num_layers=1,
+        hidden_size=64,
+        num_attention_heads=4,
+        vocab_size=32,
+        transformer_impl="modelopt",  # This uses TEDotProductAttention via get_gpt_modelopt_spec
+    ).cuda()
+
+    # Create dummy input for calibration
+    prompt_tokens = torch.randint(0, model.vocab_size, (2, model.max_sequence_length)).cuda()
+
+    def forward_fn(model):
+        return megatron_prefill(model, prompt_tokens)
+
+    # Test KV cache quantization with the given config
+    quantized_model = mtq.quantize(model, config, forward_fn)
+
+    # Find TEDotProductAttention modules and verify they have KV cache quantizers
+    te_attention_found = False
+    for name, module in quantized_model.named_modules():
+        # Check if this is a quantized TEDotProductAttention
+        if hasattr(module, "q_bmm_quantizer") and hasattr(module, "k_bmm_quantizer"):
+            te_attention_found = True
+            # Verify all expected quantizers exist
+            assert hasattr(module, "v_bmm_quantizer"), f"Missing v_bmm_quantizer in {name}"
+
+            # Verify K and V quantizers are enabled (main purpose of KV cache configs)
+            assert module.k_bmm_quantizer.is_enabled, f"K quantizer not enabled in {name}"
+            assert module.v_bmm_quantizer.is_enabled, f"V quantizer not enabled in {name}"
+
+    assert te_attention_found, "No TEDotProductAttention with KV cache quantizers found in model"
+
+    # Quick smoke test that forward still works
+    output = forward_fn(quantized_model)
+    assert output is not None, "Forward pass failed"
+
+
+def _test_kv_cache_sharded_state_dict_helper(tmp_path, config, rank, size):
+    """Helper for testing KV cache quantization with sharded state dict save/load."""
+    # Disable output_layer quantization (same as other sharded state dict tests)
+    config["quant_cfg"]["*output_layer*"] = {"enable": False}
+
+    initialize_for_megatron(
+        tensor_model_parallel_size=size, pipeline_model_parallel_size=1, seed=SEED
+    )
+
+    # Create GPT models with TEDotProductAttention (transformer_impl="modelopt")
+    model_ref = get_mcore_gpt_model(
+        tensor_model_parallel_size=size,
+        num_layers=2,  # At least 2 layers to test multiple attention modules
+        hidden_size=64,
+        num_attention_heads=4,
+        vocab_size=64,
+        transformer_impl="modelopt",  # CRITICAL: Use TEDotProductAttention
+    ).cuda()
+
+    model_test = get_mcore_gpt_model(
+        tensor_model_parallel_size=size,
+        num_layers=2,
+        hidden_size=64,
+        num_attention_heads=4,
+        vocab_size=64,
+        transformer_impl="modelopt",
+    ).cuda()
+
+    prompt_tokens = torch.randint(
+        0, model_ref.vocab_size, (2, model_ref.max_sequence_length)
+    ).cuda()
+
+    def forward_fn(model):
+        return megatron_prefill(model, prompt_tokens)
+
+    # Quantize the reference model
+    model_ref = mtq.quantize(model_ref, config, forward_fn)
+
+    # CRITICAL: model_test must also be quantized with the same config
+    # Otherwise it won't have the KV cache quantizer keys when loading state dict
+    model_test = mtq.quantize(model_test, config, forward_fn)
+
+    # Verify KV cache quantizers were created
+    kv_quantizers_found = False
+    for name, module in model_ref.named_modules():
+        if hasattr(module, "k_bmm_quantizer") and hasattr(module, "v_bmm_quantizer"):
+            kv_quantizers_found = True
+            assert module.k_bmm_quantizer.is_enabled, f"K quantizer not enabled in {name}"
+            assert module.v_bmm_quantizer.is_enabled, f"V quantizer not enabled in {name}"
+
+    assert kv_quantizers_found, "No KV cache quantizers found in quantized model"
+
+    # Test sharded state dict save/load
+    sharded_state_dict_test_helper(
+        tmp_path,
+        model_ref,
+        model_test,
+        forward_fn,
+        meta_device=False,
+        version=None,
+    )
+
+    # Verify KV cache quantizers are restored correctly in model_test
+    for (name_ref, module_ref), (name_test, module_test) in zip(
+        model_ref.named_modules(), model_test.named_modules()
+    ):
+        if hasattr(module_ref, "k_bmm_quantizer"):
+            assert hasattr(module_test, "k_bmm_quantizer"), (
+                f"K quantizer missing after restore in {name_test}"
+            )
+            assert hasattr(module_test, "v_bmm_quantizer"), (
+                f"V quantizer missing after restore in {name_test}"
+            )
+
+            # Check that quantizer states match
+            if hasattr(module_ref.k_bmm_quantizer, "_amax"):
+                assert hasattr(module_test.k_bmm_quantizer, "_amax"), (
+                    f"K quantizer _amax missing in {name_test}"
+                )
+                if module_ref.k_bmm_quantizer._amax is not None:
+                    assert torch.allclose(
+                        module_ref.k_bmm_quantizer._amax, module_test.k_bmm_quantizer._amax
+                    ), f"K quantizer _amax mismatch in {name_test}"
+
+            if hasattr(module_ref.v_bmm_quantizer, "_amax"):
+                assert hasattr(module_test.v_bmm_quantizer, "_amax"), (
+                    f"V quantizer _amax missing in {name_test}"
+                )
+                if module_ref.v_bmm_quantizer._amax is not None:
+                    assert torch.allclose(
+                        module_ref.v_bmm_quantizer._amax, module_test.v_bmm_quantizer._amax
+                    ), f"V quantizer _amax mismatch in {name_test}"
+
+
+@pytest.mark.parametrize(
+    "config",
+    [
+        mtq.FP8_KV_CFG,
+        mtq.NVFP4_KV_CFG,
+    ],
+)
+def test_kv_cache_quant(config):
+    """Verify KV cache quantization works correctly with TEDotProductAttention.
+
+    This test ensures TEDotProductAttention is properly registered and gets the
+    expected q/k/v_bmm_quantizers when using KV cache configs.
+
+    Note: This test requires Transformer Engine to be installed since TEDotProductAttention
+    is only available with transformer_impl="modelopt" or "transformer_engine" (not "local").
+    """
+    spawn_multiprocess_job(size=1, job=partial(_test_kv_cache_quant_helper, config), backend="nccl")
+
+
+@pytest.mark.parametrize(
+    "config",
+    [
+        mtq.FP8_KV_CFG,
+        mtq.NVFP4_KV_CFG,
+    ],
+)
+def test_kv_cache_sharded_state_dict(tmp_path, config):
+    """Test KV cache quantization with sharded state dict save/load.
+
+    This test verifies the complete workflow of saving and loading KV cache quantized
+    models with distributed checkpointing, ensuring quantizer states are properly
+    preserved across the save/load cycle.
+    """
+    size = min(2, torch.cuda.device_count())  # Use 2 GPUs if available, else 1
+    spawn_multiprocess_job(
+        size=size,
+        job=partial(_test_kv_cache_sharded_state_dict_helper, tmp_path, config),
+        backend="nccl",
+    )

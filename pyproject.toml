@@ -35,7 +35,7 @@ select = [
     "I",    # isort
     "ISC",  # flake8-implicit-str-concat
     "N",    # pep8 naming
-    "PERF",  # Perflint
+    "PERF", # Perflint
     "PGH",  # pygrep-hooks
     "PIE",  # flake8-pie
     "PLE",  # pylint errors
@@ -44,7 +44,7 @@ select = [
     "RUF",  # ruff
     "SIM",  # flake8-simplify
     "TC",   # flake8-type-checking
-    "UP",    # pyupgrade
+    "UP",   # pyupgrade
     "W",    # pycodestyle warnings
 ]
 extend-ignore = [
@@ -118,7 +118,10 @@ disable_error_code = ["attr-defined"]
 # print execution time for 20 slowest tests and generate coverage reports
 addopts = "-ra --cov-report=term-missing --cov-report=html --cov-report=xml:coverage.xml --cov-config=pyproject.toml --durations=20 --strict-markers"
 pythonpath = ["tests/"]
-markers = ["manual: Only run when --run-manual is given"]
+markers = [
+    "manual: Only run when --run-manual is given",
+    "release: Regression tests that should be run before every release"
+    ]
 
 
 [tool.coverage.run]
@@ -154,7 +157,7 @@ exclude_lines = [
 
 
 [tool.bandit]
-exclude_dirs = ["examples/", "tests/"]
+exclude_dirs = [".github/", "examples/", "tests/"]
 # Do not change `skips`. It should be consistent with NVIDIA's Wheel-CI-CD bandit.yml config.
 # Use of `# nosec BXXX` requires special approval
 skips = [

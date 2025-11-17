@@ -49,7 +49,7 @@ Similarly, for vLLM or SGLang deployment, please use their installation docs.
 
 ### 1. Quantize (Post Training Quantization)
 
-With the simple API below, you can very easily use Model Optimizer to quantize your model. Model Optimizer achieves this by converting the precision of your model to the desired precision, and then using a small dataset (typically 128-512 samples) to [calibrate](https://nvidia.github.io/TensorRT-Model-Optimizer/guides/_basic_quantization.html) the quantization scaling factors. The accuracy of PTQ is typically robust across different choices of calibration data, by default Model Optimizer uses [`cnn_dailymail`](https://huggingface.co/datasets/abisee/cnn_dailymail). Users can try other datasets by easily modifying the `calib_set`.
+With the simple API below, you can very easily use Model Optimizer to quantize your model. Model Optimizer achieves this by converting the precision of your model to the desired precision, and then using a small dataset (typically 128-512 samples) to [calibrate](https://nvidia.github.io/TensorRT-Model-Optimizer/guides/_basic_quantization.html) the quantization scaling factors. The accuracy of PTQ is typically robust across different choices of calibration data, by default Model Optimizer uses a mix of [`cnn_dailymail`](https://huggingface.co/datasets/abisee/cnn_dailymail) and [`nemotron-post-training-dataset-v2`](https://huggingface.co/datasets/nvidia/Nemotron-Post-Training-Dataset-v2). Users can try other datasets by easily modifying the `calib_set`.
 
 ```python
 import modelopt.torch.quantization as mtq
@@ -235,6 +235,38 @@ with init_quantized_weights(mtq.NVFP4_DEFAULT_CFG):
 mtq.calibrate(model, algorithm="max", forward_loop=calibrate_loop)
 ```
 
+## Multi-Node Post-Training Quantization with FSDP2
+
+ModelOpt enables quantization of LLMs across multiple GPU nodes using various quantization formats. It leverages HuggingFace's Accelerate library and FSDP2 for distributed model sharding and calibration.
+
+### Usage
+
+For distributed execution across multiple nodes, use the `accelerate` library. A template configuration file (`fsdp2.yaml`) is provided and can be customized for user specific requirements.
+
+On each node run the following command:
+
+```bash
+accelerate launch --config_file fsdp2.yaml \
+    --num_machines=<num_nodes> \
+    --machine_rank=<current_node_rank> \
+    --main_process_ip=<node0_ip_addr> \
+    --main_process_port=<port> \
+    --fsdp_transformer_layer_cls_to_wrap=<decoder_layer_name>
+     multinode_ptq.py \
+    --pyt_ckpt_path <path_to_model> \
+    --qformat <fp8/nvfp4/nvfp4_awq/int8> \
+    --kv_cache_qformat <fp8/nvfp4/nvfp4_affine/none> \
+    --batch_size <calib_batch_size> \
+    --calib_size <num_calib_samples> \
+    --dataset <dataset> \
+    --export_path <export_path> \
+    --trust_remote_code 
+```
+
+The exported checkpoint can be deployed using TensorRT-LLM/ vLLM/ SGLang. For more details refer to the [deployment section](#deployment) of this document.
+
+> *Performance Note: FSDP2 is designed for training workloads and may result in longer calibration and export times. For faster calibration, maximize the batch size based on available GPU memory and choose the right number of GPUs to avoid unnecessary communication.*
+>
 ## Framework Scripts
 
 ### Hugging Face Example [Script](./scripts/huggingface_example.sh)
@@ -400,7 +432,7 @@ After the TensorRT-LLM checkpoint export, you can use the `trtllm-build` build c
 
 ## Pre-Quantized Checkpoints
 
-- Ready-to-deploy checkpoints \[[🤗 Hugging Face - Nvidia TensorRT Model Optimizer Collection](https://huggingface.co/collections/nvidia/model-optimizer-66aa84f7966b3150262481a4)\]
+- Ready-to-deploy checkpoints \[[🤗 Hugging Face - Nvidia TensorRT Model Optimizer Collection](https://huggingface.co/collections/nvidia/inference-optimized-checkpoints-with-model-optimizer)\]
 - Deployable on [TensorRT-LLM](https://github.com/NVIDIA/TensorRT-LLM), [vLLM](https://github.com/vllm-project/vllm) and [SGLang](https://github.com/sgl-project/sglang)
 - More models coming soon!
 

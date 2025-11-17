@@ -179,6 +179,10 @@ Please refer to [TRT-LLM Doc: Speculative Decoding](https://nvidia.github.io/Ten
 
 Please refer to [SGLang Doc: Speculative Decoding](https://docs.sglang.ai/advanced_features/speculative_decoding.html#EAGLE-3-Decoding) for detailed usage.
 
+### SpecDec Bench
+
+One can also use [examples/specdec_bench](../specdec_bench) to validate the trained Eagle3 checkpoints in a variety of frameworks (vLLM, SGLang, TRT-LLM) on a set of datasets.
+
 ### Deploying Quantized model
 
 See more details on deployment of quantized model to TRTLLM [here](../llm_ptq/README.md).
@@ -312,11 +316,11 @@ trainer.save_model("<path to the output directory>")
 | LLAMA 3, 3.1 | ✅ | ✅ | ✅ |
 | Mistral | ✅ | ✅ | ✅ |
 | Phi 3 | ✅ | ✅ | ✅ |
-| QWen 1.5,2,2.5 | ✅ | ✅ | ✅ |
+| QWen 1.5,2,2.5,3 | ✅ | ✅ | ✅ |
 
 ## Speculation Module Checkpoints
 
-Ready-to-deploy speculation module checkpoints \[[🤗 Hugging Face - NVIDIA TensorRT Model Optimizer Collection](https://huggingface.co/collections/nvidia/model-optimizer-66aa84f7966b3150262481a4)\]
+Ready-to-deploy speculation module checkpoints \[[🤗 Hugging Face - NVIDIA Speculative Decoding Modules Collection](https://huggingface.co/collections/nvidia/speculative-decoding-modules)\]
 Deployable on [TensorRT-LLM](https://github.com/NVIDIA/TensorRT-LLM) and [SGLang](https://github.com/sgl-project/sglang)!\
 More models coming soon!
 

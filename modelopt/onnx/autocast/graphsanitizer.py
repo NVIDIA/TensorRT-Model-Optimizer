@@ -18,11 +18,14 @@
 import numpy as np
 import onnx
 import onnx_graphsurgeon as gs
+import onnxscript
 from onnx import helper, numpy_helper
 
 import modelopt.onnx.autocast.utils as utils
 import modelopt.onnx.utils as onnx_utils
 from modelopt.onnx.autocast.logging_config import logger
+from modelopt.onnx.quantization.graph_utils import cast_custom_ops
+from modelopt.onnx.trt_utils import interpret_trt_plugins_precision_flag
 
 
 class GraphSanitizer:
@@ -34,6 +37,7 @@ class GraphSanitizer:
         min_opset: int = 13,
         max_ir_version: int | None = None,
         trt_plugins: list[str] | None = [],
+        trt_plugins_precision: list[str] | None = [],
     ) -> None:
         """Initialize GraphSanitizer.
 
@@ -48,7 +52,9 @@ class GraphSanitizer:
         self.max_ir_version = max_ir_version
         self.standard_ops = {schema.name for schema in onnx.defs.get_all_schemas()}
         self.custom_ops = None
+        self.custom_ops_low_precision_nodes = []
         self.trt_plugins = trt_plugins
+        self.trt_plugins_precision = trt_plugins_precision or []
 
     def sanitize(self) -> None:
         """Sanitize the model graph.
@@ -63,9 +69,11 @@ class GraphSanitizer:
         self.ensure_graph_name_exists()
         onnx_utils.name_onnx_nodes(self.model.graph)
         self.replace_custom_domain_nodes()
+        self.sanitize_io_casts()
         self.cleanup_model()
         self.set_ir_version(self.max_ir_version)
         self.convert_fp64_to_fp32()
+        self.ensure_custom_ops_precision()
 
     def convert_fp64_to_fp32(self) -> None:
         """Convert FP64 initializers, I/O types, and specific nodes to FP32."""
@@ -85,7 +93,19 @@ class GraphSanitizer:
 
         if modified:
             logger.info("Converted FP64 initializers, I/O types, and nodes to FP32")
-            self.model = onnx_utils.infer_shapes(self.model, strict_mode=True)
+
+    def ensure_custom_ops_precision(self) -> None:
+        """Ensure that custom ops run in the requested precision."""
+        custom_ops_to_cast, _ = interpret_trt_plugins_precision_flag(
+            self.model,
+            self.trt_plugins_precision,
+        )
+        if custom_ops_to_cast.get("fp16", {}):
+            self.model = cast_custom_ops(self.model, custom_ops_to_cast["fp16"])
+            self.custom_ops_low_precision_nodes = [
+                n.name for n in self.model.graph.node if n.op_type in custom_ops_to_cast["fp16"]
+            ]
+            logger.info("Ensured custom ops precision")
 
     def find_custom_nodes(self) -> None:
         """Find custom nodes in the model.
@@ -124,10 +144,8 @@ class GraphSanitizer:
     def convert_opset(self) -> None:
         """Convert the model to the given opset version.
 
-        Args:
-            min_opset: minimum opset version to use
-
         The method checks all opset imports and converts the model if any are below the minimum version.
+        Uses onnxscript for conversion when available, which handles large models (>2GB) better.
         """
         # Check all opset imports
         default_opsets = list(self.model.opset_import)
@@ -147,10 +165,30 @@ class GraphSanitizer:
         if any(op.version < self.min_opset for op in default_opsets):
             invalid_opsets = [op.version for op in default_opsets if op.version < self.min_opset]
             try:
-                self.model = onnx.version_converter.convert_version(self.model, self.min_opset)
+                logger.info(
+                    f"Converting model from opset {invalid_opsets} to {self.min_opset} using onnxscript..."
+                )
+
+                # Convert to onnxscript IR
+                model_ir = onnxscript.ir.serde.deserialize_model(self.model)
+
+                # onnxscript handles conversion of large models better than the standard ONNX version_converter
+                # Convert opset with fallback=True (automatically falls back to C API if needed)
+                onnxscript.version_converter.convert_version(
+                    model_ir, target_version=self.min_opset, fallback=True
+                )
+
+                # Convert back to ONNX proto
+                self.model = onnxscript.ir.serde.serialize_model(model_ir)
+                logger.info(f"Successfully converted model to opset {self.min_opset}")
             except Exception as e:
                 logger.warning(f"Failed to convert model to opset {self.min_opset}: {e!s}")
                 logger.warning(f"Attempting to continue with the original opsets: {invalid_opsets}")
+        else:
+            logger.debug(
+                f"No opset conversion needed. Current opset {[op.version for op in default_opsets]} >= min_opset "
+                "{self.min_opset}"
+            )
 
     def set_ir_version(self, max_ir_version: int | None) -> None:
         """Set the model's IR version to the maximum supported version.
@@ -342,6 +380,40 @@ class GraphSanitizer:
         except Exception as e:
             logger.debug(f"Failed to match LayerNorm pattern at {mean_node.name}: {e!s}")
             return None
+
+    def sanitize_io_casts(self) -> None:
+        """Handle the special case where an input is casted directly to an output.
+
+        Inject an identity node after the cast node.
+        """
+        model_input_names = {input.name for input in self.model.graph.input}
+        model_output_names = {output.name for output in self.model.graph.output}
+        insertions: list[tuple[int, onnx.NodeProto]] = []
+
+        for idx, node in enumerate(self.model.graph.node):
+            if (
+                node.op_type == "Cast"
+                and node.input
+                and node.output
+                and node.input[0] in model_input_names
+                and node.output[0] in model_output_names
+            ):
+                # Unique per graph output to avoid collisions when multiple outputs are cast from the same input
+                cast_output_name = node.output[0]
+                cast_new_output_name = f"{cast_output_name}__io_cast_src"
+                identity_node = helper.make_node(
+                    "Identity",
+                    inputs=[cast_new_output_name],
+                    outputs=[cast_output_name],
+                    name=f"{node.name}__io_cast_identity",
+                )
+                # Rewire Cast to produce the new intermediate
+                node.output[0] = cast_new_output_name
+                insertions.append((idx + 1, identity_node))
+
+        # Insert Identities in-order right after their corresponding Casts
+        for offset, (pos, id_node) in enumerate(insertions):
+            self.model.graph.node.insert(pos + offset, id_node)
 
     def _create_layernorm_node(self, pattern: dict) -> onnx.NodeProto:
         """Create a LayerNormalization node with optional bias."""

@@ -14,7 +14,6 @@
 # limitations under the License.
 
 import argparse
-import copy
 import random
 import time
 import warnings
@@ -24,12 +23,14 @@ import numpy as np
 import torch
 from accelerate.hooks import remove_hook_from_module
 from example_utils import (
-    apply_kv_cache_quant,
+    build_quant_cfg,
     copy_custom_model_files,
     get_model,
     get_processor,
     get_tokenizer,
     is_enc_dec,
+    is_nemotron_vl,
+    run_nemotron_vl_preview,
 )
 from transformers import (
     AutoConfig,
@@ -48,7 +49,7 @@ from modelopt.torch.export import (
     export_tensorrt_llm_checkpoint,
     get_model_type,
 )
-from modelopt.torch.export.model_utils import is_multimodal_model
+from modelopt.torch.export.model_utils import get_language_model_from_vl, is_multimodal_model
 from modelopt.torch.quantization.config import need_calibration
 from modelopt.torch.quantization.plugins.accelerate import init_quantized_weights
 from modelopt.torch.quantization.utils import is_quantized
@@ -84,8 +85,10 @@ QUANT_CFG_CHOICES: dict[str, dict[str, Any]] = {
 KV_QUANT_CFG_CHOICES = {
     "none": "none",
     "fp8": "FP8_KV_CFG",
+    "fp8_affine": "FP8_AFFINE_KV_CFG",
     "nvfp4": "NVFP4_KV_CFG",
     "nvfp4_affine": "NVFP4_AFFINE_KV_CFG",
+    "nvfp4_rotate": "NVFP4_KV_ROTATE_CFG",
 }
 
 mto.enable_huggingface_checkpointing()
@@ -255,7 +258,7 @@ def main(args):
         )
         quant_cfg = QUANT_CFG_CHOICES[args.qformat]
         if args.kv_cache_qformat != "none":
-            quant_cfg = apply_kv_cache_quant(
+            quant_cfg = mtq.utils.update_quant_cfg_with_kv_cache_quant(
                 quant_cfg, getattr(mtq, KV_QUANT_CFG_CHOICES[args.kv_cache_qformat])["quant_cfg"]
             )
 
@@ -282,6 +285,9 @@ def main(args):
     tokenizer = None
 
     full_model = model
+
+    # Detect if this is a Nemotron VL model using architecture-based detection
+    is_nemotron_vl_model = is_nemotron_vl(full_model)
 
     if model_type == "mllama":
         processor = get_processor(
@@ -312,26 +318,25 @@ def main(args):
         tokenizer.padding_side = "left"
 
         # We only quantize the language model for VLMs other than the type supported above.
-        if hasattr(model, "language_model"):
-            parent_model = model  # llama4 case
-            if isinstance(type(model).__dict__.get("language_model"), property):
-                assert hasattr(model, "model") and hasattr(model.model, "language_model"), (
-                    "Expected language_model in model.model, but attribute not found. "
-                    "This may indicate an unsupported model structure."
-                )
-                parent_model = model.model  # gemma3, qwen2.5 VL case
-
+        language_model_lineage = get_language_model_from_vl(full_model)
+        if language_model_lineage is not None:
+            language_model = language_model_lineage.pop(-1)
+            ancestors = language_model_lineage
+            # Apply disabled quant to all modules that are not part of language_model so we can exclude them during
+            # HF export.
             disabled_quant_cfg = {
                 "quant_cfg": {"default": {"enable": False}},
                 "algorithm": "max",
             }
 
-            for name, child in parent_model.named_children():
-                # Apply disabled quant to all children except language_model so we can exclude them during HF export.
-                if name != "language_model":
-                    mtq.quantize(child, disabled_quant_cfg, forward_loop=None)
+            memo = set(ancestors) | {language_model}
+            for ancestor in ancestors:
+                for _, module in ancestor.named_children():
+                    if module not in memo:
+                        mtq.quantize(module, disabled_quant_cfg, forward_loop=None)
+                        memo.add(module)
 
-            model = model.language_model
+            model = language_model
             model_type = get_model_type(model)
 
     if model_type == "phi4mm":
@@ -448,76 +453,75 @@ def main(args):
                 include_labels=args.auto_quantize_bits is not None,
             )
 
-        quant_cfg = {}
-        if not args.auto_quantize_bits:
-            assert args.qformat in QUANT_CFG_CHOICES, (
-                f"Unsupported quantization format: {args.qformat} with {args.kv_cache_qformat} KV cache"
-            )
+        quant_cfg = build_quant_cfg(
+            args.qformat,
+            args.kv_cache_qformat,
+            args.awq_block_size,
+            args.auto_quantize_bits,
+            model_type,
+            QUANT_CFG_CHOICES,
+            KV_QUANT_CFG_CHOICES,
+        )
 
-            quant_cfg = QUANT_CFG_CHOICES[args.qformat]
-
-            if "awq" in args.qformat:
-                quant_cfg = copy.deepcopy(QUANT_CFG_CHOICES[args.qformat])
-                weight_quantizer = quant_cfg["quant_cfg"]["*weight_quantizer"]
-                if isinstance(weight_quantizer, list):
-                    weight_quantizer = weight_quantizer[0]
-                # If awq_block_size argument is provided, update weight_quantizer
-                if args.awq_block_size:
-                    weight_quantizer["block_sizes"][-1] = args.awq_block_size
-
-                # Coarser optimal scale search seems to resolve the overflow in TRT-LLM for some models
-                if args.qformat == "w4a8_awq" and model_type in ["gemma", "mpt"]:
-                    quant_cfg["algorithm"] = {"method": "awq_lite", "alpha_step": 1}
-
-            enable_quant_kv_cache = args.kv_cache_qformat != "none"
-            print(f"{'Enable' if enable_quant_kv_cache else 'Disable'} KV cache quantization")
-
-            # Check if any bmm_quantizer is in the quant_cfg. If so, we need to enable the bmm_quantizer.
-            if enable_quant_kv_cache:
-                quant_cfg = apply_kv_cache_quant(
-                    quant_cfg,
-                    getattr(mtq, KV_QUANT_CFG_CHOICES[args.kv_cache_qformat])["quant_cfg"],
-                )
-
-            # Gemma 7B has accuracy regression using alpha 1. We set 0.5 instead.
-            if model_type == "gemma" and "int8_sq" in args.qformat:
-                quant_cfg["algorithm"] = {"method": "smoothquant", "alpha": 0.5}
-
-            if model_type == "phi4mm":
-                # Only quantize the language model
-                quant_cfg["quant_cfg"]["*speech*"] = {"enable": False}
-                quant_cfg["quant_cfg"]["*audio*"] = {"enable": False}
-                quant_cfg["quant_cfg"]["*image*"] = {"enable": False}
-                quant_cfg["quant_cfg"]["*vision*"] = {"enable": False}
+        # For Nemotron VL models, disable quantization of vision components
+        if is_nemotron_vl_model:
+            print("Disabling quantization for vision components in Nemotron VL model")
+            quant_cfg["quant_cfg"]["*vision*"] = {"enable": False}
+            quant_cfg["quant_cfg"]["*image*"] = {"enable": False}
+            # Also disable radio model components specifically
+            quant_cfg["quant_cfg"]["*radio*"] = {"enable": False}
+            quant_cfg["quant_cfg"]["*visual*"] = {"enable": False}
 
         if not model_is_already_quantized or calibration_only:
             # Only run single sample for preview
             input_ids = next(iter(calib_dataloader))[
                 "input_features" if model_type == "whisper" else "input_ids"
             ][0:1]
-            try:
-                generated_ids_before_ptq = full_model.generate(input_ids, max_new_tokens=100)
-            except Exception as e:
-                print(
-                    "Error during model generation. Please check if your transformers version is "
-                    "compatible with the model."
+
+            # Generate preview before quantization
+            if is_nemotron_vl_model and tokenizer is not None:
+                generated_ids_before_ptq = run_nemotron_vl_preview(
+                    full_model,
+                    tokenizer,
+                    input_ids,
+                    args.pyt_ckpt_path,
+                    "before quantization",
+                    allow_fallback=True,
                 )
-                print(f"Error details: {e}")
-                raise
+            else:
+                # Standard generation for non-Nemotron VL models
+                generated_ids_before_ptq = full_model.generate(input_ids, max_new_tokens=100)
             if model_type == "gptoss" and args.qformat == "nvfp4_mlp_only":
                 print("Applying nvfp4 quantization (MoE only) for gpt-oss")
 
             # quantize the model
             model = quantize_model(model, quant_cfg, args, calib_dataloader, calibration_only)
+
+            # For VL models, update full_model to use the quantized language model
+            if is_nemotron_vl_model:
+                language_model_lineage = get_language_model_from_vl(full_model)
+                if language_model_lineage is not None:
+                    print("Updating full_model with quantized language_model...")
+                    language_model_lineage[-2].language_model = model
+
             if args.verbose:
-                mtq.print_quant_summary(model)
+                mtq.print_quant_summary(full_model)
 
             # Run some samples
             torch.cuda.empty_cache()
             generated_ids_after_ptq = None
-            if model_type != "llama4":
+            if model_type != "llama4" and not is_nemotron_vl_model:
                 # Our fake quantizer may not be fully compatible with torch.compile.
                 generated_ids_after_ptq = full_model.generate(input_ids, max_new_tokens=100)
+            elif is_nemotron_vl_model and tokenizer is not None:
+                generated_ids_after_ptq = run_nemotron_vl_preview(
+                    full_model,
+                    tokenizer,
+                    input_ids,
+                    args.pyt_ckpt_path,
+                    "after quantization",
+                    allow_fallback=False,
+                )
             else:
                 warnings.warn(
                     "Llama4 Maverick generation after quantization has a bug. Skipping generation sample."
@@ -550,15 +554,25 @@ def main(args):
 
             if generated_ids_after_ptq is not None:
                 print("--------")
-                print(f"example test input: {input_decode(input_ids)}")
-                print("--------")
-                print(
-                    f"example outputs before ptq: {output_decode(generated_ids_before_ptq, input_ids.shape[1])}"
-                )
-                print("--------")
-                print(
-                    f"example outputs after ptq: {output_decode(generated_ids_after_ptq, input_ids.shape[1])}"
-                )
+                if is_nemotron_vl_model:
+                    # For Nemotron VL models, generated_ids are text strings from model.chat()
+                    print("Nemotron VL model text-only generation results:")
+                    print(f"Text response before quantization: {generated_ids_before_ptq}")
+                    print("--------")
+                    print(f"Text response after quantization: {generated_ids_after_ptq}")
+                    print("--------")
+                    print("Note: Additional VL tests with images were run separately above")
+                else:
+                    # For regular LLMs, generated_ids are token tensors that need decoding
+                    print(f"example test input: {input_decode(input_ids)}")
+                    print("--------")
+                    print(
+                        f"example outputs before ptq: {output_decode(generated_ids_before_ptq, input_ids.shape[1])}"
+                    )
+                    print("--------")
+                    print(
+                        f"example outputs after ptq: {output_decode(generated_ids_after_ptq, input_ids.shape[1])}"
+                    )
         else:
             warnings.warn("Skipping quantization: model is already quantized.")
 
@@ -580,9 +594,12 @@ def main(args):
             # Save original model config and the processor config to the export path for VLMs.
             print(f"Saving original model config to {export_path}")
 
-            AutoConfig.from_pretrained(
-                args.pyt_ckpt_path, trust_remote_code=args.trust_remote_code
-            ).save_pretrained(export_path)
+            config_kwargs = {"trust_remote_code": args.trust_remote_code}
+            if args.attn_implementation is not None:
+                config_kwargs["attn_implementation"] = args.attn_implementation
+            AutoConfig.from_pretrained(args.pyt_ckpt_path, **config_kwargs).save_pretrained(
+                export_path
+            )
 
             # Try to save processor config if available
             try:
@@ -780,7 +797,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--attn_implementation",
         help=(
-            "Specify the attention implementation to use."
+            "Specify the attention implementation to use. "
             "This arg will be passed to the HF model loading if specified."
         ),
         default=None,

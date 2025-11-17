@@ -16,6 +16,7 @@
 import argparse
 import logging
 import sys
+import time as time
 from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
@@ -59,6 +60,7 @@ class ModelType(str, Enum):
     SDXL_BASE = "sdxl-1.0"
     SDXL_TURBO = "sdxl-turbo"
     SD3_MEDIUM = "sd3-medium"
+    SD35_MEDIUM = "sd3.5-medium"
     FLUX_DEV = "flux-dev"
     FLUX_SCHNELL = "flux-schnell"
     LTX_VIDEO_DEV = "ltx-video-dev"
@@ -114,6 +116,7 @@ def get_model_filter_func(model_type: ModelType) -> Callable[[str], bool]:
         ModelType.SDXL_BASE: filter_func_default,
         ModelType.SDXL_TURBO: filter_func_default,
         ModelType.SD3_MEDIUM: filter_func_default,
+        ModelType.SD35_MEDIUM: filter_func_default,
         ModelType.LTX_VIDEO_DEV: filter_func_ltx_video,
     }
 
@@ -125,6 +128,7 @@ MODEL_REGISTRY: dict[ModelType, str] = {
     ModelType.SDXL_BASE: "stabilityai/stable-diffusion-xl-base-1.0",
     ModelType.SDXL_TURBO: "stabilityai/sdxl-turbo",
     ModelType.SD3_MEDIUM: "stabilityai/stable-diffusion-3-medium-diffusers",
+    ModelType.SD35_MEDIUM: "stabilityai/stable-diffusion-3.5-medium",
     ModelType.FLUX_DEV: "black-forest-labs/FLUX.1-dev",
     ModelType.FLUX_SCHNELL: "black-forest-labs/FLUX.1-schnell",
     ModelType.LTX_VIDEO_DEV: "Lightricks/LTX-Video-0.9.7-dev",
@@ -164,6 +168,7 @@ class QuantizationConfig:
     alpha: float = 1.0  # SmoothQuant alpha
     lowrank: int = 32  # SVDQuant lowrank
     quantize_mha: bool = False
+    compress: bool = False
 
     def validate(self) -> None:
         """Validate configuration consistency."""
@@ -171,6 +176,8 @@ class QuantizationConfig:
             raise NotImplementedError("Only 'default' collect method is implemented for FP8.")
         if self.quantize_mha and self.format == QuantFormat.INT8:
             raise ValueError("MHA quantization is only supported for FP8, not INT8.")
+        if self.compress and self.format == QuantFormat.INT8:
+            raise ValueError("Compression is only supported for FP8 and FP4, not INT8.")
 
 
 @dataclass
@@ -230,6 +237,7 @@ class ModelConfig:
         """Check if model uses transformer backbone (vs UNet)."""
         return self.model_type in [
             ModelType.SD3_MEDIUM,
+            ModelType.SD35_MEDIUM,
             ModelType.FLUX_DEV,
             ModelType.FLUX_SCHNELL,
             ModelType.LTX_VIDEO_DEV,
@@ -326,7 +334,7 @@ class PipelineManager:
             model_id = (
                 MODEL_REGISTRY[model_type] if override_model_path is None else override_model_path
             )
-            if model_type == ModelType.SD3_MEDIUM:
+            if model_type in [ModelType.SD3_MEDIUM, ModelType.SD35_MEDIUM]:
                 pipe = StableDiffusion3Pipeline.from_pretrained(model_id, torch_dtype=torch_dtype)
             elif model_type in [ModelType.FLUX_DEV, ModelType.FLUX_SCHNELL]:
                 pipe = FluxPipeline.from_pretrained(model_id, torch_dtype=torch_dtype)
@@ -357,7 +365,7 @@ class PipelineManager:
         self.logger.info(f"Data type: {self.config.model_dtype.value}")
 
         try:
-            if self.config.model_type == ModelType.SD3_MEDIUM:
+            if self.config.model_type in [ModelType.SD3_MEDIUM, ModelType.SD35_MEDIUM]:
                 self.pipe = StableDiffusion3Pipeline.from_pretrained(
                     self.config.model_path, torch_dtype=self.config.torch_dtype
                 )
@@ -761,6 +769,9 @@ def create_argument_parser() -> argparse.ArgumentParser:
             # FP8 quantization with ONNX export
             %(prog)s --model sd3-medium --format fp8 --onnx-dir ./onnx_models/
 
+            # FP8 quantization with weight compression (reduces memory footprint)
+            %(prog)s --model flux-dev --format fp8 --compress
+
             # Quantize LTX-Video model with full multi-stage pipeline
             %(prog)s --model ltx-video-dev --format fp8 --batch-size 1 --calib-size 32
 
@@ -830,6 +841,11 @@ def create_argument_parser() -> argparse.ArgumentParser:
     quant_group.add_argument(
         "--quantize-mha", action="store_true", help="Quantizing MHA into FP8 if its True"
     )
+    quant_group.add_argument(
+        "--compress",
+        action="store_true",
+        help="Compress quantized weights to reduce memory footprint (FP8/FP4 only)",
+    )
 
     calib_group = parser.add_argument_group("Calibration Configuration")
     calib_group.add_argument("--batch-size", type=int, default=2, help="Batch size for calibration")
@@ -864,6 +880,8 @@ def main() -> None:
     parser = create_argument_parser()
     args = parser.parse_args()
 
+    s = time.time()
+
     logger = setup_logging(args.verbose)
     logger.info("Starting Enhanced Diffusion Model Quantization")
 
@@ -887,6 +905,7 @@ def main() -> None:
             alpha=args.alpha,
             lowrank=args.lowrank,
             quantize_mha=args.quantize_mha,
+            compress=args.compress,
         )
 
         calib_config = CalibrationConfig(
@@ -933,15 +952,23 @@ def main() -> None:
 
             quantizer.quantize_model(backbone, backbone_quant_config, forward_loop)
 
+            # Compress model weights if requested (only for FP8/FP4)
+            if quant_config.compress:
+                logger.info("Compressing model weights to reduce memory footprint...")
+                mtq.compress(backbone)
+                logger.info("Model compression completed")
+
         export_manager.save_checkpoint(backbone)
         export_manager.export_onnx(
             pipe,
             backbone,
             model_config.model_type,
             quant_config.format,
-            quantize_mha=QuantizationConfig.quantize_mha,
+            quantize_mha=quant_config.quantize_mha,
         )
-        logger.info("Quantization process completed successfully!")
+        logger.info(
+            f"Quantization process completed successfully! Time taken = {time.time() - s} seconds"
+        )
 
     except Exception as e:
         logger.error(f"Quantization failed: {e}", exc_info=True)

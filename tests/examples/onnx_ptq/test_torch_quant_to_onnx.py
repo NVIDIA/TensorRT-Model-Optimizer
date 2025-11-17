@@ -15,7 +15,7 @@
 
 
 import pytest
-from _test_utils.examples.run_command import run_torch_onnx_command
+from _test_utils.examples.run_command import extend_cmd_parts, run_example_command
 
 
 # TODO: Add accuracy evaluation after we upgrade TRT version to 10.12
@@ -28,6 +28,10 @@ from _test_utils.examples.run_command import run_torch_onnx_command
     ],
 )
 def test_torch_onnx(quantize_mode, onnx_save_path, calib_size):
-    run_torch_onnx_command(
-        quantize_mode=quantize_mode, onnx_save_path=onnx_save_path, calib_size=calib_size
+    cmd_parts = extend_cmd_parts(
+        ["python", "torch_quant_to_onnx.py"],
+        quantize_mode=quantize_mode,
+        onnx_save_path=onnx_save_path,
+        calibration_data_size=calib_size,
     )
+    run_example_command(cmd_parts, "onnx_ptq")

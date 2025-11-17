@@ -21,17 +21,15 @@ from _test_utils.import_helper import skip_if_no_megatron
 
 skip_if_no_megatron(apex_or_te_required=True, mamba_required=True)
 
-from _test_utils.torch_dist.dist_utils import spawn_multiprocess_job
-from _test_utils.torch_dist.plugins.megatron_common import (
-    get_mcore_mamba_model,
-    run_mcore_inference_with_dummy_input,
-)
+from _test_utils.torch.distributed.utils import spawn_multiprocess_job
+from _test_utils.torch.megatron.models import get_mcore_mamba_hybrid_model
+from _test_utils.torch.megatron.utils import run_mcore_inference_with_dummy_input
 from megatron.core.ssm.mamba_layer import MambaLayer
 
 import modelopt.torch.prune as mtp
 
 
-def _test_mcore_mamba_pruning(ckpt_path, rank, size):
+def _test_mcore_mamba_hybrid_pruning(ckpt_path, rank, size):
     num_layers = min(size * 2, 8)
     hidden_size = 256
     ffn_hidden_size = 128
@@ -40,10 +38,11 @@ def _test_mcore_mamba_pruning(ckpt_path, rank, size):
     mamba_state_dim = 64
     mamba_head_dim = 16
     mamba_num_groups = 2
+    num_moe_experts = 8
     batch_size = 2
 
     def _get_model(initialize_megatron=True):
-        model = get_mcore_mamba_model(
+        model = get_mcore_mamba_hybrid_model(
             tensor_model_parallel_size=1,
             pipeline_model_parallel_size=size,
             initialize_megatron=initialize_megatron,
@@ -51,10 +50,14 @@ def _test_mcore_mamba_pruning(ckpt_path, rank, size):
             hidden_size=hidden_size,
             num_attention_heads=num_attention_heads,
             num_query_groups=num_query_groups,
+            ffn_hidden_size=ffn_hidden_size,
             mamba_state_dim=mamba_state_dim,
             mamba_head_dim=mamba_head_dim,
             mamba_num_groups=mamba_num_groups,
-        )
+            moe_ffn_hidden_size=ffn_hidden_size,
+            moe_shared_expert_intermediate_size=ffn_hidden_size,
+            num_moe_experts=num_moe_experts,
+        ).cuda()
         return model
 
     model = _get_model()
@@ -76,6 +79,7 @@ def _test_mcore_mamba_pruning(ckpt_path, rank, size):
     pruned_num_attention_heads = num_attention_heads // 2
     pruned_num_query_groups = num_query_groups // 2
     pruned_hidden_size = hidden_size // 2
+    pruned_num_moe_experts = num_moe_experts // 2
 
     # Mamba-specific pruning parameters
     pruned_mamba_num_heads = mamba_num_heads // 2
@@ -89,6 +93,9 @@ def _test_mcore_mamba_pruning(ckpt_path, rank, size):
         "hidden_size": pruned_hidden_size,
         "mamba_num_heads": pruned_mamba_num_heads,
         "mamba_head_dim": pruned_mamba_head_dim,
+        "moe_ffn_hidden_size": pruned_ffn_hidden_size,
+        "moe_shared_expert_intermediate_size": pruned_ffn_hidden_size,
+        "num_moe_experts": pruned_num_moe_experts,
     }
     mtp.prune(
         model,
@@ -117,6 +124,9 @@ def _test_mcore_mamba_pruning(ckpt_path, rank, size):
     assert model.config.hidden_size == pruned_hidden_size
     assert model.config.mamba_num_heads == pruned_mamba_num_heads
     assert model.config.mamba_head_dim == pruned_mamba_head_dim
+    assert model.config.moe_ffn_hidden_size == pruned_ffn_hidden_size
+    assert model.config.moe_shared_expert_intermediate_size == pruned_ffn_hidden_size
+    assert model.config.num_moe_experts == pruned_num_moe_experts
 
     # Assert forward pass works on the pruned model
     run_mcore_inference_with_dummy_input(model, batch_size, pruned_hidden_size)
@@ -132,9 +142,9 @@ def _test_mcore_mamba_pruning(ckpt_path, rank, size):
     )
 
 
-def test_mcore_mamba_pruning(tmp_path):
+def test_mcore_mamba_hybrid_pruning(tmp_path):
     spawn_multiprocess_job(
         size=torch.cuda.device_count(),
-        job=partial(_test_mcore_mamba_pruning, tmp_path / "modelopt_minitron_scores.pth"),
+        job=partial(_test_mcore_mamba_hybrid_pruning, tmp_path / "modelopt_minitron_scores.pth"),
         backend="nccl",
     )

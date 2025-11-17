@@ -16,7 +16,7 @@
 import pytest
 import torch
 import torch.nn as nn
-from _test_utils.torch_quantization.quantize_common import quantize_model_and_forward
+from _test_utils.torch.quantization.quantize_common import quantize_model_and_forward
 
 import modelopt.torch.opt as mto
 import modelopt.torch.quantization as mtq

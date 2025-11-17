@@ -40,7 +40,7 @@ from modelopt.onnx.quantization.graph_utils import (
 )
 from modelopt.onnx.quantization.graph_utils import (
     expand_node_names_from_patterns,
-    get_precision_info,
+    get_layer_info,
     get_tensor_consumer_nodes,
     get_tensor_producer_nodes,
 )
@@ -99,14 +99,35 @@ UINT4_MAX = 15
 CLIP_MIN = 1e-5
 
 
+def safe_cupy_array(tensor):
+    """Convert ml_dtypes.int4 tensor to numpy.int8 for CuPy compatibility.
+
+    In ONNX 1.19, int4 tensors use ml_dtypes.int4 which CuPy doesn't support.
+    This function converts them to regular numpy.int8 while preserving values.
+
+    Args:
+        tensor: numpy array that may have ml_dtypes.int4 dtype
+    Returns:
+        cupy or numpy array (if cupy is not supported) with numpy.int8 dtype if input was ml_dtypes.int4,
+        otherwise unchanged
+    """
+    try:
+        import ml_dtypes
+
+        if hasattr(tensor, "dtype") and tensor.dtype == ml_dtypes.int4:
+            return np.asarray(tensor.astype(numpy.int8))
+    except ImportError:
+        pass
+
+    return np.asarray(tensor)
+
+
 def _quantize_gather_nodes(
     graph: onnx.GraphProto,
     nodes_to_exclude: list[str],
-    gather_quantize_axis: int,
-    block_size: int,
     use_zero_point: bool,
     dq_only: bool,
-    precision_info: dict[str, int] | None,
+    layer_info: dict[str, dict] | None,
 ):
     """Return scale, zero-point, and weights for quantizable gather nodes using INT4 RTN."""
     t = time.time()
@@ -122,11 +143,18 @@ def _quantize_gather_nodes(
                     # 1D blocked quantization not supported.
                     continue
                 name = in_tensor.name
+                # Get layer-specific settings from layer_info if available
+                if layer_info and name in layer_info:
+                    gather_quantize_axis = layer_info[name]["axis"]
+                    block_size = layer_info[name].get("block_size", DEFAULT_GATHER_BLOCK_SIZE)
+                else:
+                    gather_quantize_axis = 0
+                    block_size = DEFAULT_GATHER_BLOCK_SIZE
                 w = in_tensor.values
                 # Updating the block size as for 8bit quantization, per-channel quantization is used.
-                num_bits = get_num_bits(precision_info, name)
+                num_bits = get_num_bits(layer_info, name)
                 block_size_updated = update_block_size(
-                    num_bits, block_size, w=w, quantize_axis=gather_quantize_axis
+                    block_size, layer_info, name, w=w, quantize_axis=gather_quantize_axis
                 )
                 s, zp = find_scales(
                     np.asarray(w),
@@ -173,7 +201,7 @@ def _quantize_gather_nodes(
         )
     else:
         logger.info("Found 0 Gather nodes to quantize")
-    scales_map = reshape_scales_for_per_channel_nodes(scales_map, block_size, precision_info)
+    scales_map = reshape_scales_for_per_channel_nodes(scales_map, block_size, layer_info)
     return weights_map, scales_map, zero_point_map
 
 
@@ -221,12 +249,12 @@ def quantize_rtn(
     logger.info("Computing scales for gemm weights")
     scales = {}
     gemm_io_type = {}
-    precision_info = get_precision_info(onnx_model, nodes_to_exclude, **kwargs)
+    layer_info = get_layer_info(onnx_model, nodes_to_exclude, block_size, **kwargs)
     for name, w in gemm_weights.items():
         logger.debug(f"Computing scales for weight {name} of shape {w.shape}")
         # Updating the block size as for 8bit quantization, per-channel quantization is used.
-        num_bits = get_num_bits(precision_info, name)
-        block_size_updated = update_block_size(num_bits, block_size, w=w)
+        num_bits = get_num_bits(layer_info, name)
+        block_size_updated = update_block_size(block_size, layer_info, name, w=w)
         s, zp = find_scales(np.asarray(w), block_size_updated, num_bits=num_bits)
 
         assert zp is None, "zero-point is not enabled but zp is found non-None"
@@ -240,7 +268,6 @@ def quantize_rtn(
 
     # Import the update graph
     graph = gs.import_onnx(onnx_model)
-
     gather_block_size = kwargs.get("gather_block_size", DEFAULT_GATHER_BLOCK_SIZE)
     gather_quantize_axis = kwargs.get("gather_quantize_axis", DEFAULT_GATHER_QUANTIZE_AXIS)
     gather_w_map = None
@@ -249,11 +276,9 @@ def quantize_rtn(
         gather_w_map, gather_s_map, _ = _quantize_gather_nodes(
             graph,
             nodes_to_exclude,
-            gather_quantize_axis,
-            gather_block_size,
             use_zero_point=False,
             dq_only=dq_only,
-            precision_info=precision_info,
+            layer_info=layer_info,
         )
 
     if dq_only:
@@ -263,43 +288,57 @@ def quantize_rtn(
         for name, w in gemm_weights.items():
             logger.debug(f"Quantizing weight {name}")
             # Updating the block size as for 8bit quantization, per-channel quantization is used.
-            num_bits = get_num_bits(precision_info, name)
-            block_size_updated = update_block_size(num_bits, block_size, w=w)
+            num_bits = get_num_bits(layer_info, name)
+            block_size_updated = update_block_size(block_size, layer_info, name, w=w)
             qw = rtn(np.asarray(w), scales[name], block_size_updated, num_bits=num_bits)
             if has_cupy:
                 qw = np.asnumpy(qw)
                 scales[name] = np.asnumpy(scales[name])
             gemm_weights_quantized[name] = numpy.asarray(qw)
-        scales = reshape_scales_for_per_channel_nodes(scales, block_size, precision_info)
+        scales = reshape_scales_for_per_channel_nodes(scales, block_size, layer_info)
+        dq_node_attributes = {"axis": 0, "block_size": block_size}
         qdq.insert_dq_nodes(
             graph,
             scales,
             quantized_weights=gemm_weights_quantized,
-            precision_info=precision_info,
+            attributes=dq_node_attributes,
+            layer_info=layer_info,
         )
 
         if gather_w_map is not None:
+            gather_dq_node_attributes = {
+                "axis": gather_quantize_axis,
+                "block_size": gather_block_size,
+            }
             assert gather_s_map is not None, "scale-map not found for quantizable gather nodes"
+            gather_dq_node_attributes = {
+                "axis": gather_quantize_axis,
+                "block_size": gather_block_size,
+            }
             qdq.insert_dq_nodes(
                 graph,
                 gather_s_map,
                 quantized_weights=gather_w_map,
-                precision_info=precision_info,
+                attributes=gather_dq_node_attributes,
+                layer_info=layer_info,
             )
     else:
         if has_cupy:
             for name in scales:
                 scales[name] = np.asnumpy(scales[name])
-        scales = reshape_scales_for_per_channel_nodes(scales, block_size, precision_info)
-        qdq.insert_qdq_nodes(graph, scales, weight_map=gemm_tensors, precision_info=precision_info)
+        scales = reshape_scales_for_per_channel_nodes(scales, block_size, layer_info)
+        qdq.insert_qdq_nodes(graph, scales, weight_map=gemm_tensors, layer_info=layer_info)
         if gather_w_map is not None:
             assert gather_s_map is not None, "scale-map not found for quantizable gather nodes"
             qdq.insert_qdq_nodes(
-                graph, gather_s_map, weight_map=gather_w_map, precision_info=precision_info
+                graph, gather_s_map, weight_map=gather_w_map, layer_info=layer_info
             )
 
     logger.info(f"RTN quantization completed in {time.time() - t_start:.2f} seconds")
-    return gs.export_onnx(graph)
+    model = gs.export_onnx(graph)
+    model.ir_version = 10
+
+    return model
 
 
 class AWQClipHelper:
@@ -406,11 +445,11 @@ def _clip_search(
 
 def _augment_graph(
     graph: onnx.GraphProto,
-    wa_pack: list[tuple[gs.Tensor, gs.Tensor, bool, int]],
+    wa_pack: list[tuple[gs.Tensor, gs.Tensor, bool, int, str]],
 ):
     """Extend graph outputs with MatMuls activation input."""
     augmented_outputs = {tensor.name for tensor in graph.output}
-    for act_tensor, _, _, _ in wa_pack:
+    for act_tensor, _, _, _, _ in wa_pack:
         if act_tensor.name not in augmented_outputs:
             graph.output.append(act_tensor)
             augmented_outputs.add(act_tensor.name)
@@ -478,12 +517,12 @@ def _quantize_awq_clip(
     for inp_d in data_reader:
         inputs.append(inp_d)
         assert isinstance(inp_d, dict)
-    precision_info = get_precision_info(onnx_model, nodes_to_exclude, **kwargs)
+    layer_info = get_layer_info(onnx_model, nodes_to_exclude, block_size, **kwargs)
     # Apply AWQ clip on selected weights
     t = time.time()
     alphas = {}
     for i in tqdm(range(len(wa_pack)), desc="Running clip search..."):
-        act_tensor, weight_tensor, do_transpose, gemm_io_type = wa_pack[i]
+        act_tensor, weight_tensor, do_transpose, gemm_io_type, _ = wa_pack[i]
 
         # First capture all the  activation values after calibration data sweep
         output_dicts = {}
@@ -501,9 +540,9 @@ def _quantize_awq_clip(
         if do_transpose:
             w = w.T
         w = np.asarray(w)
-        num_bits = get_num_bits(precision_info, weight_tensor.name)
+        num_bits = get_num_bits(layer_info, weight_tensor.name)
         # Updating the block size as for 8bit quantization, per-channel quantization is used.
-        block_size_updated = update_block_size(num_bits, block_size, w=w)
+        block_size_updated = update_block_size(block_size, layer_info, weight_tensor.name, w=w)
         awq_clip = AWQClipHelper(w, block_size_updated, **kwargs)
         _clip_search(x, w, awq_clip, num_bits=num_bits, **kwargs)
         alphas[weight_tensor.name] = awq_clip.best_alpha
@@ -515,7 +554,7 @@ def _quantize_awq_clip(
     # Compute quantized weights and scales which are needed for DQ nodes
     t = time.time()
     for i in tqdm(range(len(wa_pack)), desc="Quantizing the weights..."):
-        act_tensor, weight_tensor, do_transpose, gemm_io_type = wa_pack[i]
+        act_tensor, weight_tensor, do_transpose, gemm_io_type, _ = wa_pack[i]
         gemm_io_type = cast("onnx.TensorProto.DataType", gemm_io_type)
 
         if force_fp16:
@@ -529,9 +568,9 @@ def _quantize_awq_clip(
         w = np.asarray(w)
 
         alpha = alphas.get(weight_tensor.name, 1)
-        num_bits = get_num_bits(precision_info, weight_tensor.name)
+        num_bits = get_num_bits(layer_info, weight_tensor.name)
         # Updating the block size as for 8bit quantization, per-channel quantization is used.
-        block_size_updated = update_block_size(num_bits, block_size, w=w)
+        block_size_updated = update_block_size(block_size, layer_info, weight_tensor.name, w=w)
         qw, scale, _ = quant_tensor(w, block_size_updated, alpha=alpha, num_bits=num_bits)
         if has_cupy:
             qw = np.asnumpy(qw)
@@ -560,22 +599,20 @@ def _quantize_awq_clip(
         gather_w_map, gather_s_map, _ = _quantize_gather_nodes(
             graph_gs,
             nodes_to_exclude,
-            gather_quantize_axis,
-            gather_block_size,
             use_zero_point=False,
             dq_only=True,
-            precision_info=precision_info,
+            layer_info=layer_info,
         )
 
     t = time.time()
     dq_node_attributes = {"axis": 0, "block_size": block_size}
-    scales = reshape_scales_for_per_channel_nodes(scales, block_size, precision_info)
+    scales = reshape_scales_for_per_channel_nodes(scales, block_size, layer_info)
     qdq.insert_dq_nodes(
         graph_gs,
         scales,
         quantized_weights=gemm_weights_quantized,
         attributes=dq_node_attributes,
-        precision_info=precision_info,
+        layer_info=layer_info,
     )
     if gather_w_map is not None:
         assert gather_s_map is not None, "scale-map not found for quantizable gather nodes"
@@ -585,7 +622,7 @@ def _quantize_awq_clip(
             gather_s_map,
             quantized_weights=gather_w_map,
             attributes=gather_dq_node_attributes,
-            precision_info=precision_info,
+            layer_info=layer_info,
         )
     logger.info(f"Inserting DQ nodes took {time.time() - t} seconds")
 
@@ -670,7 +707,7 @@ def get_scale(x_max, w_max, alpha):
 
 
 def run_awq_scale_search_per_node(
-    wa_pack: list[tuple[gs.Tensor, gs.Tensor, bool, int]],
+    wa_pack: list[tuple[gs.Tensor, gs.Tensor, bool, int, str]],
     augmented_onnx_path,
     block_size,
     use_zero_point,
@@ -682,7 +719,7 @@ def run_awq_scale_search_per_node(
     enable_fast_path_using_high_sysram,
     output_data,
     clip_alphas,
-    precision_info: dict[str, int] | None = None,
+    layer_info: dict[str, dict] | None = None,
     **kwargs: Any,
 ):
     """Method that iterates over each quantizable node for scale search."""
@@ -691,7 +728,7 @@ def run_awq_scale_search_per_node(
         range(len(wa_pack)),
         desc="Running AWQ scale search per node" + tqdm_msg_append_str,
     ):
-        act_tensor, weight_tensor, do_transpose, gemm_io_type = wa_pack[i]
+        act_tensor, weight_tensor, do_transpose, gemm_io_type, _ = wa_pack[i]
 
         output_dicts = {}
 
@@ -725,8 +762,8 @@ def run_awq_scale_search_per_node(
             (-1, w.shape[0])
         )  # n_token, ci
         # Updating the block size as for 8bit quantization, per-channel quantization is used.
-        num_bits = get_num_bits(precision_info, weight_tensor.name)
-        block_size_updated = update_block_size(num_bits, block_size, w=w)
+        num_bits = get_num_bits(layer_info, weight_tensor.name)
+        block_size_updated = update_block_size(block_size, layer_info, weight_tensor.name, w=w)
         awq_lite[i] = AWQLiteHelper(x, w, block_size_updated, **kwargs)
 
         out_actual = x.__matmul__(w)
@@ -765,7 +802,7 @@ def run_awq_scale_search_per_node(
 
 
 def get_act_to_weight_map_and_act_to_wa_pack_map(
-    wa_pack: list[tuple[gs.Tensor, gs.Tensor, bool, int]],
+    wa_pack: list[tuple[gs.Tensor, gs.Tensor, bool, int, str]],
 ):
     """Method to return subgraph related maps based on activation-name as key.
 
@@ -776,7 +813,7 @@ def get_act_to_weight_map_and_act_to_wa_pack_map(
     act_to_wa_pack_map = {}
     act_to_quant_nodes_weight_shape_map = {}
     for i in tqdm(range(len(wa_pack)), desc="Getting activation names maps..."):
-        act_tensor, weight_tensor, do_transpose, gemm_io_type = wa_pack[i]
+        act_tensor, weight_tensor, do_transpose, gemm_io_type, _ = wa_pack[i]
         # wa_pack index is stored in map to represent quant nodes
         act_to_wa_pack_map.setdefault(act_tensor.name, []).append(i)
         act_to_quant_nodes_weight_shape_map.setdefault(act_tensor.name, []).append(
@@ -791,7 +828,7 @@ def get_act_to_weight_map_and_act_to_wa_pack_map(
 
 
 def get_x_w_mean_for_subgraph(
-    wa_pack: list[tuple[gs.Tensor, gs.Tensor, bool, int]],
+    wa_pack: list[tuple[gs.Tensor, gs.Tensor, bool, int, str]],
     wa_pack_idx_list,
     augmented_onnx_path,
     x,
@@ -805,7 +842,7 @@ def get_x_w_mean_for_subgraph(
 
     w_concatenated = None
     for wa_pack_idx in wa_pack_idx_list:
-        act_tensor, weight_tensor, do_transpose, gemm_io_type = wa_pack[wa_pack_idx]
+        act_tensor, weight_tensor, do_transpose, gemm_io_type, _ = wa_pack[wa_pack_idx]
         w = numpy_helper.to_array(
             weight_tensor, base_dir=os.path.dirname(augmented_onnx_path)
         ).copy()
@@ -843,7 +880,7 @@ def get_x_w_mean_for_subgraph(
 
 
 def run_awq_scale_search_per_subgraph(
-    wa_pack: list[tuple[gs.Tensor, gs.Tensor, bool, int]],
+    wa_pack: list[tuple[gs.Tensor, gs.Tensor, bool, int, str]],
     act_to_wa_pack_map,
     act_to_quant_nodes_weight_shape_map,
     augmented_onnx_path,
@@ -894,7 +931,7 @@ def run_awq_scale_search_per_subgraph(
             awq_scale[np.isinf(awq_scale)] = 1
             awq_scale[np.isnan(awq_scale)] = 1
             for wa_pack_idx in wa_pack_idx_list:
-                _, weight_tensor, do_transpose, _ = wa_pack[wa_pack_idx]
+                _, weight_tensor, do_transpose, _, _ = wa_pack[wa_pack_idx]
                 w = numpy_helper.to_array(
                     weight_tensor, base_dir=os.path.dirname(augmented_onnx_path)
                 ).copy()
@@ -938,7 +975,7 @@ def run_awq_scale_search_per_subgraph(
 
 def get_parent_child_nodes_map(
     graph: onnx.GraphProto,
-    wa_pack: list[tuple[gs.Tensor, gs.Tensor, bool, int]],
+    wa_pack: list[tuple[gs.Tensor, gs.Tensor, bool, int, str]],
     nodes_to_exclude: list[str],
 ):
     """Get mapping of parent nodes to their MatMul/Gemm nodes with quantizable weights."""
@@ -946,7 +983,7 @@ def get_parent_child_nodes_map(
     output_name_to_node = get_tensor_producer_nodes(graph)
     input_name_to_nodes = get_tensor_consumer_nodes(graph)
 
-    for act_tensor, _, _, _ in wa_pack:
+    for act_tensor, _, _, _, _ in wa_pack:
         parent_name = output_name_to_node[act_tensor.name].name
         parent_child_nodes_map[parent_name] = []
         for node in input_name_to_nodes[act_tensor.name]:
@@ -973,7 +1010,7 @@ def _quantize_awq_lite(
     """Quantizes `onnx_model` using the Activation aware quantization a.k.a AWQ algorithm."""
     logger.info("Quantizing model using AWQ lite algorithm")
     t = time.time()
-    precision_info = get_precision_info(onnx_model, nodes_to_exclude, **kwargs)
+    layer_info = get_layer_info(onnx_model, nodes_to_exclude, block_size, **kwargs)
     run_per_subgraph = kwargs.get("awqlite_run_per_subgraph", False)
     fuse_nodes = kwargs.get("awqlite_fuse_nodes", True)
 
@@ -982,9 +1019,9 @@ def _quantize_awq_lite(
 
     # TODO - evaluate/add sysram based fast-path support in per-subgraph implementation
     assert not run_per_subgraph or not enable_fast_path_using_high_sysram
-
+    enable_mixed_quant = kwargs.get("enable_mixed_quant", False)
     # TODO - add support for handling awq_lite mixed precision for per-subgraph implementation
-    assert not run_per_subgraph or precision_info is None
+    assert not run_per_subgraph or not enable_mixed_quant
 
     augmented_model = copy.deepcopy(onnx_model)
     graph = augmented_model.graph
@@ -1032,7 +1069,7 @@ def _quantize_awq_lite(
 
         tensor_names_list = []
         for i in tqdm(range(len(wa_pack)), desc="Getting tensor names..."):
-            act_tensor, weight_tensor, do_transpose, gemm_io_type = wa_pack[i]
+            act_tensor, weight_tensor, do_transpose, gemm_io_type, _ = wa_pack[i]
             tensor_names_list.append(act_tensor.name)
 
         for i in tqdm(range(len(inputs)), desc="Caching activations..."):
@@ -1086,7 +1123,7 @@ def _quantize_awq_lite(
             enable_fast_path_using_high_sysram,
             output_data,
             clip_alphas,
-            precision_info,
+            layer_info,
             **kwargs,
         )
     assert len(awq_lite) == len(wa_pack)
@@ -1120,7 +1157,7 @@ def _quantize_awq_lite(
                 awq_lite[wa_pack_idx].best_scale = mean_awq_scale
 
     for i in tqdm(range(len(wa_pack)), desc="Quantizing the weights..."):
-        act_tensor, weight_tensor, do_transpose, gemm_io_type = wa_pack[i]
+        act_tensor, weight_tensor, do_transpose, gemm_io_type, _ = wa_pack[i]
         gemm_io_type = cast("onnx.TensorProto.DataType", gemm_io_type)
 
         if force_fp16:
@@ -1139,8 +1176,10 @@ def _quantize_awq_lite(
             "clip range enabled without enabling weight-clipping param"
         )
         # Updating the block size as for 8bit quantization, per-channel quantization is used.
-        num_bits = get_num_bits(precision_info, weight_tensor.name)
-        block_size_updated = update_block_size(num_bits, block_size, w=w_scaled)
+        num_bits = get_num_bits(layer_info, weight_tensor.name)
+        block_size_updated = update_block_size(
+            block_size, layer_info, weight_tensor.name, w=w_scaled
+        )
         qw, scale, zp = quant_tensor(
             w_scaled,
             block_size_updated,
@@ -1263,23 +1302,21 @@ def _quantize_awq_lite(
         gather_w_map, gather_s_map, gather_zp_map = _quantize_gather_nodes(
             graph_gs,
             nodes_to_exclude,
-            gather_quantize_axis,
-            gather_block_size,
             use_zero_point=use_zero_point,
             dq_only=True,
-            precision_info=precision_info,
+            layer_info=layer_info,
         )
 
     t = time.time()
     dq_node_attributes = {"axis": 0, "block_size": block_size}
-    scales = reshape_scales_for_per_channel_nodes(scales, block_size, precision_info)
+    scales = reshape_scales_for_per_channel_nodes(scales, block_size, layer_info)
     qdq.insert_dq_nodes(
         graph_gs,
         scales,
         quantized_weights=gemm_weights_quantized,
         attributes=dq_node_attributes,
         zero_points=zero_points if use_zero_point else None,
-        precision_info=precision_info,
+        layer_info=layer_info,
     )
     if gather_w_map is not None:
         assert gather_s_map is not None, "scale-map not found for quantizable gather nodes"
@@ -1293,7 +1330,7 @@ def _quantize_awq_lite(
             quantized_weights=gather_w_map,
             attributes=gather_dq_node_attributes,
             zero_points=gather_zp_map if use_zero_point else None,
-            precision_info=precision_info,
+            layer_info=layer_info,
         )
     if pre_quant_scale:
         qdq.insert_pre_quant_scale_nodes(graph_gs, input_tensors, pre_quant_scale)

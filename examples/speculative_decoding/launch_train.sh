@@ -78,6 +78,22 @@ while [ $# -gt 0 ]; do
       if [[ "$1" != *=* ]]; then shift; fi
       NUM_GPU="${1#*=}"
       ;;
+    --disable_tqdm*)
+      if [[ "$1" != *=* ]]; then shift; fi
+      DISABLE_TQDM="${1#*=}"
+      ;;
+    --vlm_processor*)
+      if [[ "$1" != *=* ]]; then shift; fi
+      VLM_PROCESSOR="${1#*=}"
+      ;;
+    --vlm_img_dir*)
+      if [[ "$1" != *=* ]]; then shift; fi
+      VLM_IMG_DIR="${1#*=}"
+      ;;
+    --ar_validate_steps*)
+      if [[ "$1" != *=* ]]; then shift; fi
+      AR_VALIDATE_STEPS="${1#*=}"
+      ;;
     *)
       >&2 printf "Error: Invalid argument ${1#*=}\n"
       exit 1
@@ -110,6 +126,10 @@ FSDP_TRANSFORMER_LAYER_CLS_TO_WRAP=${FSDP_TRANSFORMER_LAYER_CLS_TO_WRAP:-"LlamaD
 NUM_GPU=${NUM_GPU:-1}
 TRAINING_SEQ_LEN=${TRAINING_SEQ_LEN:-2048}
 OFFLINE_DATA_PATH=${OFFLINE_DATA_PATH:-""}
+DISABLE_TQDM=${DISABLE_TQDM:-False}
+VLM_PROCESSOR=${VLM_PROCESSOR:-}
+VLM_IMG_DIR=${VLM_IMG_DIR:-}
+AR_VALIDATE_STEPS=${AR_VALIDATE_STEPS:-1000}
 
 if [[ "$MODE" == "medusa" ]]; then
   SPECULATIVE_ARGS="--medusa_num_heads $MEDUSA_NUM_HEADS --medusa_num_layers $MEDUSA_NUM_LAYERS"
@@ -141,6 +161,12 @@ else
   MULTI_GPU="--multi_gpu"
 fi
 
+if [[ "$VLM_PROCESSOR" != "" ]]; then
+  VLM_ARGS="--vlm_processor $VLM_PROCESSOR --vlm_img_dir $VLM_IMG_DIR"
+else
+  VLM_ARGS=""
+fi
+
 # Disable tokenizers parallelism to avoid warning
 export TOKENIZERS_PARALLELISM=False
 CMD="accelerate launch $MULTI_GPU --mixed_precision bf16 main.py \
@@ -165,8 +191,11 @@ CMD="accelerate launch $MULTI_GPU --mixed_precision bf16 main.py \
     --logging_steps 100 \
     --tf32 True \
     --data_path $DATA \
+    --disable_tqdm $DISABLE_TQDM \
+    --ar_validate_steps $AR_VALIDATE_STEPS \
+    $VLM_ARGS \
     $OFFLINE_TRAINING_ARGS \
-    $SPECULATIVE_ARGS
+    $SPECULATIVE_ARGS \
 "
 
 start_time=$(date +%s)

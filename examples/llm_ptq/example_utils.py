@@ -13,13 +13,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import copy
 import glob
 import os
 import shutil
 import sys
 import warnings
 from pathlib import Path
-from typing import Any
 
 import torch
 import transformers
@@ -32,9 +32,149 @@ try:
 except ImportError:
     snapshot_download = None
 
+import modelopt.torch.quantization as mtq
 from modelopt.torch.utils.image_processor import MllamaImageProcessor
 
 SPECULATIVE_MODEL_LIST = ["Eagle", "Medusa"]
+
+
+def run_nemotron_vl_preview(
+    full_model, tokenizer, input_ids, pyt_ckpt_path, stage_name, allow_fallback=False
+):
+    """Run text-only and VL preview generation for Nemotron VL models.
+
+    Args:
+        full_model: The full VL model
+        tokenizer: The tokenizer
+        input_ids: Input tensor for generation
+        pyt_ckpt_path: Path to the model checkpoint
+        stage_name: Description of the stage (e.g., "before quantization", "after quantization")
+        allow_fallback: Whether to allow fallback to standard generate on failure
+
+    Returns:
+        Generated text response or None if generation failed
+    """
+    from vlm_utils import run_text_only_generation, run_vl_preview_generation
+
+    print(f"Running text-only preview generation for Nemotron VL model ({stage_name})...")
+    question = tokenizer.decode(input_ids[0], skip_special_tokens=True)
+    generation_config = {
+        "max_new_tokens": 100,
+        "do_sample": False,
+        "eos_token_id": tokenizer.eos_token_id,
+    }
+
+    # Try text-only generation
+    text_response = run_text_only_generation(
+        full_model, tokenizer, question, generation_config, pyt_ckpt_path
+    )
+
+    if text_response is not None:
+        print(f"✅ Text-only generation successful: {text_response[:100]}...")
+        generated_ids = text_response
+    elif allow_fallback:
+        print("Text-only generation failed, falling back to standard generate...")
+        generated_ids = full_model.generate(input_ids, max_new_tokens=100)
+    else:
+        generated_ids = None
+
+    # Run additional VL test with images
+    print(f"Running additional VL test with images ({stage_name})...")
+    run_vl_preview_generation(full_model, tokenizer, pyt_ckpt_path, stage_name)
+
+    return generated_ids
+
+
+def _is_multimodal_config(config):
+    """Check if a config indicates a multimodal model (config-only version of is_multimodal_model)."""
+    return (
+        hasattr(config, "vision_config")  # Standard vision config (e.g., Qwen2.5-VL)
+        or getattr(config, "model_type", "") == "phi4mm"  # Phi-4 multimodal
+        or hasattr(config, "vision_lora")  # Vision LoRA configurations
+        or hasattr(config, "audio_processor")  # Audio processing capabilities
+        or (
+            hasattr(config, "embd_layer") and hasattr(config.embd_layer, "image_embd_layer")
+        )  # Image embedding layers
+    )
+
+
+def is_nemotron_vl(model_or_config):
+    """Check if model or config indicates a Nemotron VL model.
+
+    Args:
+        model_or_config: Either a model instance or a config object.
+
+    Returns:
+        bool: True if it's a Nemotron VL model, False otherwise.
+    """
+    # Try to get config from model, or use directly if it's a config
+    if hasattr(model_or_config, "config"):
+        config = model_or_config.config
+        from modelopt.torch.export.model_utils import is_multimodal_model
+
+        if not is_multimodal_model(model_or_config):
+            return False
+    else:
+        config = model_or_config
+        if not _is_multimodal_config(config):
+            return False
+
+    architectures = getattr(config, "architectures", [])
+    return any("nemotron" in arch.lower() for arch in architectures)
+
+
+def build_quant_cfg(
+    qformat,
+    kv_cache_qformat,
+    awq_block_size,
+    auto_quantize,
+    model_type,
+    quant_cfg_choices,
+    kv_quant_cfg_choices,
+):
+    quant_cfg = {}
+    if not auto_quantize:
+        assert qformat in quant_cfg_choices, (
+            f"Unsupported quantization format: {qformat} with {kv_cache_qformat} KV cache"
+        )
+
+        quant_cfg = quant_cfg_choices[qformat]
+
+        if "awq" in qformat:
+            quant_cfg = copy.deepcopy(quant_cfg_choices[qformat])
+            weight_quantizer = quant_cfg["quant_cfg"]["*weight_quantizer"]
+            if isinstance(weight_quantizer, list):
+                weight_quantizer = weight_quantizer[0]
+            # If awq_block_size argument is provided, update weight_quantizer
+            if awq_block_size:
+                weight_quantizer["block_sizes"][-1] = awq_block_size
+
+            # Coarser optimal scale search seems to resolve the overflow in TRT-LLM for some models
+            if qformat == "w4a8_awq" and model_type in ["gemma", "mpt"]:
+                quant_cfg["algorithm"] = {"method": "awq_lite", "alpha_step": 1}
+
+        enable_quant_kv_cache = kv_cache_qformat != "none"
+        print(f"{'Enable' if enable_quant_kv_cache else 'Disable'} KV cache quantization")
+
+        # Check if any bmm_quantizer is in the quant_cfg. If so, we need to enable the bmm_quantizer.
+        if enable_quant_kv_cache:
+            quant_cfg = mtq.update_quant_cfg_with_kv_cache_quant(
+                quant_cfg,
+                getattr(mtq, kv_quant_cfg_choices[kv_cache_qformat])["quant_cfg"],
+            )
+
+        # Gemma 7B has accuracy regression using alpha 1. We set 0.5 instead.
+        if model_type == "gemma" and "int8_sq" in qformat:
+            quant_cfg["algorithm"] = {"method": "smoothquant", "alpha": 0.5}
+
+        if model_type == "phi4mm":
+            # Only quantize the language model
+            quant_cfg["quant_cfg"]["*speech*"] = {"enable": False}
+            quant_cfg["quant_cfg"]["*audio*"] = {"enable": False}
+            quant_cfg["quant_cfg"]["*image*"] = {"enable": False}
+            quant_cfg["quant_cfg"]["*vision*"] = {"enable": False}
+
+    return quant_cfg
 
 
 def is_speculative(hf_config):
@@ -129,7 +269,28 @@ def get_model(
     if device == "cpu":
         device_map = "cpu"
 
+    # Add VILA to sys.path before loading config if needed
+    if "vila" in ckpt_path.lower():
+        vila_path = os.path.join(ckpt_path, "..", "VILA")
+        if vila_path not in sys.path:
+            sys.path.append(vila_path)
+        from llava.model import LlavaLlamaConfig, LlavaLlamaModel  # noqa: F401
+
+    # Prepare config kwargs for loading
     config_kwargs = {"trust_remote_code": trust_remote_code} if trust_remote_code else {}
+
+    # Load config once and handle VL model detection
+    try:
+        hf_config = AutoConfig.from_pretrained(ckpt_path, **config_kwargs)
+        if is_nemotron_vl(hf_config):
+            print(
+                "Detected Nemotron VL model from config. "
+                "Disabling automatic device mapping for compatibility."
+            )
+            device_map = None
+    except Exception as e:
+        print(f"Error: Could not load config from {ckpt_path}: {e}")
+        raise RuntimeError(f"Failed to load model configuration from {ckpt_path}") from e
     if attn_implementation is not None:
         config_kwargs["attn_implementation"] = attn_implementation
 
@@ -140,8 +301,6 @@ def get_model(
         model_kwargs.setdefault("torch_dtype", "auto")
 
     if "vila" in ckpt_path.lower():
-        sys.path.append(os.path.join(ckpt_path, "..", "VILA"))
-        from llava.model import LlavaLlamaConfig, LlavaLlamaModel  # noqa: F401
         from transformers import AutoModel
 
         hf_vila = AutoModel.from_pretrained(
@@ -151,11 +310,6 @@ def get_model(
         )
         model = hf_vila.llm
     else:
-        hf_config = AutoConfig.from_pretrained(
-            ckpt_path,
-            **config_kwargs,
-        )
-
         if use_seq_device_map:
             device_map = "sequential"
             # If we use sequential, set max_memory limit to ensure that the model does not occupy the full GPU
@@ -226,6 +380,12 @@ def get_model(
                 **model_kwargs,
             )
     model.eval()
+
+    # If device_map was disabled (None), manually move model to target device
+    if device_map is None and device != "cpu":
+        print(f"Moving model to {device} device...")
+        model = model.to(device)
+
     if device == "cuda" and not is_model_on_gpu(model):
         print("Warning: Some parameters are not on a GPU. Calibration can be slow or hit OOM")
 
@@ -240,20 +400,6 @@ def is_model_on_gpu(model) -> bool:
 def is_enc_dec(model_type) -> bool:
     """Return if the model is a encoder-decoder model."""
     return model_type in ["t5", "bart", "whisper"]
-
-
-def apply_kv_cache_quant(quant_cfg: dict[str, Any], kv_cache_quant_cfg: dict[str, Any]):
-    """Apply quantization to the kv cache of the model."""
-    # Update KV cache related bmm quantizers
-    # If quant_cfg["quant_cfg"] is None, it corresponds to only kv cache quantization case
-    quant_cfg["quant_cfg"] = quant_cfg.get("quant_cfg", {"default": {"enable": False}})
-    quant_cfg["quant_cfg"].update(kv_cache_quant_cfg)
-
-    # Set default algorithm for kv cache quantization if not provided.
-    if not quant_cfg.get("algorithm"):
-        quant_cfg["algorithm"] = "max"
-
-    return quant_cfg
 
 
 def _resolve_model_path(model_name_or_path: str, trust_remote_code: bool = False) -> str:
@@ -365,10 +511,10 @@ def copy_custom_model_files(source_path: str, export_path: str, trust_remote_cod
     # Common patterns for custom model files that need to be copied
     custom_file_patterns = [
         "configuration_*.py",
-        "modeling_*.py",
+        "modeling*.py",
         "tokenization_*.py",
         "processing_*.py",
-        "image_processing_*.py",
+        "image_processing*.py",
         "feature_extraction_*.py",
         "*.json",
     ]

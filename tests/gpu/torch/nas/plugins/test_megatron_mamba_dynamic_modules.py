@@ -16,16 +16,17 @@
 
 import torch
 from _test_utils.import_helper import skip_if_no_megatron
+from _test_utils.torch.misc import compare_outputs
 
 skip_if_no_megatron(apex_or_te_required=True, mamba_required=True)
 
-from _test_utils.torch_dist.dist_utils import spawn_multiprocess_job
-from _test_utils.torch_dist.plugins.megatron_common import (
-    get_mcore_mamba_model,
+from _test_utils.torch.distributed.utils import spawn_multiprocess_job
+from _test_utils.torch.megatron.models import get_mcore_mamba_hybrid_model
+from _test_utils.torch.megatron.utils import (
     run_mcore_inference,
     run_mcore_inference_with_dummy_input,
 )
-from _test_utils.torch_misc import set_seed
+from _test_utils.torch.misc import set_seed
 from megatron.core.parallel_state import is_pipeline_first_stage, is_pipeline_last_stage
 from megatron.core.transformer.identity_op import IdentityOp
 
@@ -35,18 +36,17 @@ from modelopt.torch.nas.plugins.megatron import (
     MambaDInnerHp,
     MambaNumHeadsHp,
     _DynamicColumnParallelLinear,
+    _DynamicEmbedding,
     _DynamicExtendedRMSNorm,
     _DynamicLayerNorm,
     _DynamicMambaLayer,
     _DynamicMambaMixer,
     _DynamicMCoreLanguageModel,
     _DynamicRowParallelLinear,
-    _DynamicVocabParallelEmbedding,
 )
 from modelopt.torch.nas.traced_hp import TracedHp
 from modelopt.torch.opt.utils import named_dynamic_modules, search_space_size
 from modelopt.torch.prune.plugins.mcore_minitron import _convert_model_to_dynamic_space
-from modelopt.torch.utils import flatten_tree
 from modelopt.torch.utils.random import centroid
 
 SEED = 1234
@@ -67,7 +67,7 @@ def _test_mamba_search_space(rank, size):
     vocab_size = 32
     batch_size = 2
 
-    model = get_mcore_mamba_model(
+    model = get_mcore_mamba_hybrid_model(
         tensor_model_parallel_size=1,
         pipeline_model_parallel_size=size,
         initialize_megatron=True,
@@ -79,14 +79,14 @@ def _test_mamba_search_space(rank, size):
         mamba_num_groups=mamba_num_groups,
         max_sequence_length=max_sequence_length,
         vocab_size=vocab_size,
-    )
+    ).cuda()
     mamba_num_heads = model.decoder.layers[0].mixer.nheads
 
     model = mtn.convert(model, "mcore_minitron")
 
     assert isinstance(model, _DynamicMCoreLanguageModel)
     if is_pipeline_first_stage():
-        assert isinstance(model.embedding.word_embeddings, _DynamicVocabParallelEmbedding)
+        assert isinstance(model.embedding.word_embeddings, _DynamicEmbedding)
     for layer in model.decoder.layers:
         assert isinstance(layer, _DynamicMambaLayer)
         assert isinstance(layer.mixer, _DynamicMambaMixer)
@@ -142,7 +142,7 @@ def _test_mamba_parameter_sorting(rank, size):
     vocab_size = 64
     batch_size = 2
 
-    model = get_mcore_mamba_model(
+    model = get_mcore_mamba_hybrid_model(
         tensor_model_parallel_size=1,
         pipeline_model_parallel_size=size,
         initialize_megatron=True,
@@ -155,7 +155,7 @@ def _test_mamba_parameter_sorting(rank, size):
         max_sequence_length=max_sequence_length,
         vocab_size=vocab_size,
         bf16=False,
-    )
+    ).cuda()
 
     # Randomize norm weights instead of all zeros or ones
     for n, m in model.named_modules():
@@ -186,10 +186,7 @@ def _test_mamba_parameter_sorting(rank, size):
     y2 = run_mcore_inference(model, prompt_tokens)
 
     # check if the inference results after sorting is the same
-    assert all(
-        torch.allclose(t1, t2, rtol=1e-5, atol=1e-3)
-        for t1, t2 in zip(flatten_tree(y1)[0], flatten_tree(y2)[0])
-    )
+    compare_outputs(y1, y2, rtol=1e-5, atol=1e-3)
 
 
 def test_mamba_parameter_sorting(need_2_gpus):
