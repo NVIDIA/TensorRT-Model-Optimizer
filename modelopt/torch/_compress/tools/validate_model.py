@@ -61,46 +61,7 @@ Usage:
 ======
 
 ###########################################################
-### For lit-llama multi gpu:
-### Use torchrun and the flag --pipeline_parallel.
-### Example:
-
-MODEL="/lustre/fsw/portfolios/coreai/projects/coreai_nvfm_llm/models/meta-llama/Llama-3.1-8B-Instruct"
-DATASET="/lustre/fsw/portfolios/coreai/projects/coreai_nvfm_llm/datasets/diverse_mix/releases/v0.4_mini"
-
-NUM_GPUS=$(python -c "import torch; print(torch.cuda.device_count())")
-torchrun --rdzv-backend=static  --master-addr 127.0.0.1  --master-port  8754  --nproc-per-node=${NUM_GPUS} -m  \
-  scripts.validate_model --pipeline_parallel  \
-  --model_name_or_path=${MODEL}  \
-  --dataset_path ${DATASET}  \
-  --block_size 1024  --eval_samples 32 --seed 42  --shuffle_seed 444  --bos_rate 0.5  --data_column conversation  \
-  --val_dataset_name=__auto__   --micro_batch_size 1   \
-  2>&1 | tee -a "${MODEL}/validate_model_outputs.txt"
-
-
-
-###########################################################
-### For lit-llama multi gpu with teacher similarity scores:
-### Use torchrun and the flag --pipeline_parallel.
-### Specify --teacher_dir.
-### Example:
-
-TEACHER="/lustre/fsw/portfolios/coreai/projects/coreai_nvfm_llm/models/meta-llama/Meta-Llama-3-8B-Instruct"
-MODEL="/lustre/fsw/portfolios/coreai/projects/coreai_nvfm_llm/models/meta-llama/Llama-3.1-8B-Instruct"
-DATASET="/lustre/fsw/portfolios/coreai/projects/coreai_nvfm_llm/datasets/diverse_mix/releases/v0.4_mini"
-
-NUM_GPUS=$(python -c "import torch; print(torch.cuda.device_count())")
-torchrun --rdzv-backend=static  --master-addr 127.0.0.1  --master-port  8754  --nproc-per-node=${NUM_GPUS} -m  \
-  scripts.validate_model --pipeline_parallel  \
-  --model_name_or_path=${MODEL}  \
-  --teacher_dir=${TEACHER} \
-  --dataset_path ${DATASET}  \
-  --block_size 8192  --eval_samples 32 --seed 42  --shuffle_seed 444  --bos_rate 0.5  --data_column conversation  \
-  --val_dataset_name=__auto__   --micro_batch_size 1
-
-
-###########################################################
-### For huggingface models (device_map="auto") or lit-llama single gpu:
+### For huggingface models (device_map="auto"):
 ### Use python (not torchrun) and do not use the flag --pipeline_parallel.
 python -m  scripts.validate_model \
   --all --the --other --args
@@ -118,19 +79,6 @@ python -m  \
   2>&1 | tee -a "${MODEL}/validate_model_outputs.txt"
 
 
-
-###########################################################
-### Calculate activations log (channel contribution) for lit-llama multi gpu:
-NUM_GPUS=$(python -c "import torch; print(torch.cuda.device_count())")
-torchrun --rdzv-backend=static  --master-addr 127.0.0.1  --master-port  8754  --nproc-per-node=${NUM_GPUS}  \
-  -m  scripts.validate_model --pipeline_parallel  \
-  --model_name_or_path  $MODEL  \
-  --dataset_path  $DATASET  \
-  --block_size 8192  --eval_samples 4096 --seed 42  --bos_rate 0.5  --data_column conversation  \
-  --val_dataset_name=train  --shuffle_seed 81436     --micro_batch_size 4   \
-  --activations_log_dir  activations_log_${FILESAFE_MODEL_NAME}
-
-
 """
 
 
@@ -144,6 +92,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--dataset_path", type=str, required=True)
 
+    # TODO: consider removing lit-llama specific args to keep the code HF-only
     parser.add_argument(
         "--teacher_dir",
         type=str,
