@@ -9,6 +9,10 @@ Model Optimizer Changelog (Linux)
 
 - Add support for PyTorch Geometric quantization.
 
+**Documentation**
+
+- Deprecate ``examples/megatron-lm`` in favor of more detailed documentation in `Megatron-LM/examples/post_training/modelopt <https://github.com/NVIDIA/Megatron-LM/tree/main/examples/post_training/modelopt>`_.
+
 **Misc**
 
 - Bump minimum recommended transformers version to 4.53.
@@ -72,7 +76,7 @@ Model Optimizer Changelog (Linux)
 - Upgrade TensorRT-LLM dependency to 1.1.0rc2.
 - Support Phi-4-multimodal and Qwen2.5-VL quantized HF checkpoint export in ``examples/vlm_ptq``.
 - Support storing and restoring Minitron pruning activations and scores for re-pruning without running the forward loop again.
-- Add Minitron pruning example for Megatron-LM framework. See ``examples/megatron-lm`` for more details.
+- Add Minitron pruning example for Megatron-LM framework. See `Megatron-LM/examples/post_training/modelopt <https://github.com/NVIDIA/Megatron-LM/tree/main/examples/post_training/modelopt>`_ for more details.
 
 0.35 (2025-09-04)
 ^^^^^^^^^^^^^^^^^
