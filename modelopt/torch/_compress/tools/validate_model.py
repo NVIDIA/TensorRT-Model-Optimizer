@@ -101,6 +101,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
     parser.add_argument("--tokenizer_name", type=str, default=None)
     parser.add_argument("--data_column", type=str, default="content")
+    # TODO: Add help text for FIM rate, also for others less obvious args
     parser.add_argument("--fim_rate", type=float, default=0)
     parser.add_argument("--fim_spm_rate", type=float, default=0)
     parser.add_argument("--eval_samples", type=int, default=None)
