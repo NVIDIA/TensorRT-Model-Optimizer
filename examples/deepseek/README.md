@@ -1,6 +1,6 @@
-# Quantize Deepseek R1 to FP4
+# Quantize Deepseek models to FP4
 
-This example will demonstrate the steps to quantize DeepSeek R1 model to FP4 and export a unified checkpoint that can be deployed with TRT-LLM.
+This example will demonstrate the steps to quantize DeepSeek models to FP4 and export a unified checkpoint that can be deployed with TRT-LLM.
 
 ## Setup
 
@@ -26,7 +26,7 @@ huggingface-cli download deepseek-ai/DeepSeek-R1 --local-dir $HF_FP8_CKPT
 git clone https://github.com/deepseek-ai/DeepSeek-V3.git && cd DeepSeek-V3 && git checkout 1398800
 ```
 
-### DeepSeek V3.2
+### [Experimental] DeepSeek V3.2
 
 ```bash
 # download the FP8 checkpoint from Hugginface.
