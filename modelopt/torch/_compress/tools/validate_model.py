@@ -49,9 +49,8 @@ from modelopt.torch._compress.tools.sharded_checkpoint_utils import load_and_sha
 Two goals:
 1) Calculate lm loss and token accuracy for a model.
 May raise lots of NCCL warnings when it finishes, don't be alarmed.
-Can be used to validate a lit-llama model or a HuggingFace model.
-If HuggingFace, automatically uses pipeline parallelism via device_map="auto".
-If lit-llama, will use pipeline parallelism if called with --pipeline_parallel and run using torchrun.
+Can be used to validate a HuggingFace model.
+Automatically uses pipeline parallelism via device_map="auto".
 
 2) Register hooks to capture the inputs and the outputs of pytorch modules.
 For example, to collect activations scores for various layers (ffn, layer_norm, etc.)
