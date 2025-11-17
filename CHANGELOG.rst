@@ -27,6 +27,7 @@ Model Optimizer Changelog (Linux)
 - Add ``specdec_bench`` example to benchmark speculative decoding performance. See `examples/specdec_bench/README.md <https://github.com/NVIDIA/TensorRT-Model-Optimizer/tree/main/examples/specdec_bench#speculative-decoding-benchmark>`_ for more details.
 - Add FP8/NVFP4 KV cache quantization support for Megatron Core models.
 
+
 0.39 (2025-11-11)
 ^^^^^^^^^^^^^^^^^
 
