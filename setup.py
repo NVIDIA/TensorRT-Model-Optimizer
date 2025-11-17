@@ -51,7 +51,7 @@ optional_deps = {
         "onnxruntime~=1.22.0 ; platform_machine == 'aarch64' or platform_system == 'Darwin'",
         "onnxruntime-gpu~=1.22.0 ; platform_machine != 'aarch64' and platform_system != 'Darwin' and platform_system != 'Windows'",  # noqa: E501
         "onnxruntime-directml==1.20.0; platform_system == 'Windows'",
-        "onnxscript",  # For test_onnx_dynamo_export unit test
+        "onnxscript",  # For autocast opset conversion and test_onnx_dynamo_export unit test
         "onnxsim ; python_version < '3.12' and platform_machine != 'aarch64'",
         "polygraphy>=0.49.22",
     ],
@@ -61,7 +61,7 @@ optional_deps = {
         "diffusers>=0.32.2",
         "huggingface_hub>=0.24.0",
         "peft>=0.17.0",
-        "transformers>=4.48,<5.0",  # Should match modelopt/torch/__init__.py and tox.ini
+        "transformers>=4.53,<5.0",  # Should match modelopt/torch/__init__.py and tox.ini
         "deepspeed>=0.9.6 ; platform_system != 'Darwin' and platform_system != 'Windows'",
     ],
     # linter tools
