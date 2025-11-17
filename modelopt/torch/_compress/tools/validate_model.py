@@ -15,7 +15,6 @@
 
 import argparse
 import textwrap
-from copy import deepcopy
 from pathlib import Path
 
 import torch.distributed
@@ -92,14 +91,6 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--dataset_path", type=str, required=True)
 
-    # TODO: consider removing lit-llama specific args to keep the code HF-only
-    parser.add_argument(
-        "--teacher_dir",
-        type=str,
-        default=None,
-        help="If given, calculates teacher similarity scores (kl_div etc.) "
-        "Only works with lit-llama models.",
-    )
     parser.add_argument("--output_dir_name", type=str, default="validation")
     parser.add_argument(
         "--calculate_full_score_ablations",
@@ -314,48 +305,11 @@ def prepare_dataloader(
     return val_dataloader
 
 
-def validate_model_with_teacher_similarity_scores(
-    args: argparse.Namespace,
-    runtime: IRuntime,
-):
-    from puzzle_tools.validation_utils import (
-        validate_model_and_extract_hidden_states,
-        validate_model_with_teacher_similarity_metrics,  # importing here to avoid cyclic import
-    )
-
-    output_dir = Path(args.model_name_or_path) / args.output_dir_name
-
-    teacher_val_args = deepcopy(args)
-    teacher_val_args.model_name_or_path = args.teacher_dir
-    teacher_hidden_states = validate_model_and_extract_hidden_states(
-        args=teacher_val_args,
-        model=None,
-        tokenizer=None,
-        output_dir=output_dir,
-        model_name="teacher",
-        runtime=runtime,
-    )
-
-    validate_model_with_teacher_similarity_metrics(
-        args=args,
-        model=None,
-        tokenizer=None,
-        target_hidden_states_per_batch=teacher_hidden_states,
-        output_dir=output_dir,
-        model_name="this_model",
-        runtime=runtime,
-        calculate_full_score_ablations=args.calculate_full_score_ablations,
-    )
-
-
 def main():
     args = parse_args()
     if args.pipeline_parallel:
         with NativeDdpRuntime(dtype=torch.bfloat16) as runtime:
-            if args.teacher_dir is None:
-                validate_model(args=args, runtime=runtime)
-            else:
-                validate_model_with_teacher_similarity_scores(args=args, runtime=runtime)
+            validate_model(args=args, runtime=runtime)
     else:
         validate_model(args=args, runtime=None)
 
