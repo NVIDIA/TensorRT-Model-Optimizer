@@ -273,6 +273,13 @@ class GPTModelExporter:
                             "use_aux_hidden_state"
                         ],
                         "eagle_aux_hidden_state_layer_ids": model.eagle_config.eagle_aux_hidden_state_layer_ids,
+                        "next_layer_regular": True,
+                        "parallel_draft_step": mode_cfg["config"]["eagle_architecture_config"][
+                            "parallel_draft_step"
+                        ],
+                        "parallel_draft_heads_num_layers": mode_cfg["config"][
+                            "eagle_architecture_config"
+                        ]["parallel_draft_heads_num_layers"],
                     }
 
                     eagle_config_update = {
