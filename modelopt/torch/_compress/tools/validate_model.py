@@ -67,8 +67,8 @@ python -m  scripts.validate_model \
   --all --the --other --args
 ### Example:
 
-MODEL="/lustre/fsw/portfolios/coreai/projects/coreai_nvfm_llm/models/meta-llama/Llama-3.1-8B-Instruct-HF"
-DATASET="/lustre/fsw/portfolios/coreai/projects/coreai_nvfm_llm/datasets/diverse_mix/releases/v0.4_mini"
+MODEL=".../meta-llama/Llama-3.1-8B-Instruct-HF"
+DATASET=".../datasets/diverse_mix/releases/v0.4_mini"
 
 python -m  \
   scripts.validate_model  \
