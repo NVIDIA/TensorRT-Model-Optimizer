@@ -555,37 +555,27 @@ def rolling_low_values_filter(
 
 
 class EmptyInitOnDevice(torch.overrides.TorchFunctionMode):
-    def __init__(self, device=None, dtype=None, quantization_mode=None):
+    def __init__(self, device=None, dtype=None):
         """
         Create tensors with given device and dtype and don't run initialization
            (but instead use "empty tensors", i.e. uninitialized memory).
 
             device: `torch.device` to work with
             dtype: `torch.dtype` to work with
-            quantization_mode: optional string, quantization mode to work with, default `None`.
-                 Available modes: `llm.int8` bitsnbytes LLM.int8 quantization (only on GPU)
-                                  `gptq.int4`, `gptq.int8`: GPTQ pre-quantized models
+
 
         Example::
             with EmptyInitOnDevice("cuda", dtype=torch.bfloat16):
                 model = LLaMA(model_config)
             model.load_state_dict(torch.load("llama-lit/7B/lit-llama.pth"))"""
 
-        assert quantization_mode is None, "Deci: we removed support for lit-llama quantization"
-        self.quantization_mode = quantization_mode
-        self.quantized_linear_cls = None
         self.device = device
         self.dtype = dtype
 
     def __enter__(self):
-        if self.quantized_linear_cls is not None:
-            self.torch_linear_cls = torch.nn.Linear
-            torch.nn.Linear = self.quantized_linear_cls
         return super().__enter__()
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        if self.quantized_linear_cls is not None:
-            torch.nn.Linear = self.torch_linear_cls
         return super().__exit__(exc_type, exc_val, exc_tb)
 
     def __torch_function__(self, func, types, args=(), kwargs=None):
