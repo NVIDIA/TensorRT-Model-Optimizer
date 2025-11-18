@@ -21,6 +21,7 @@ import torch
 import torch.multiprocessing as mp
 from datasets import load_dataset
 from download_example_onnx import export_to_onnx
+from evaluation import evaluate
 
 import modelopt.torch.quantization as mtq
 
@@ -125,6 +126,17 @@ def main():
         default=1,
         help="Batch size for calibration and ONNX model export.",
     )
+    parser.add_argument(
+        "--evaluate",
+        action="store_true",
+        help="Evaluate the base and quantized models on ImageNet validation set.",
+    )
+    parser.add_argument(
+        "--eval_data_size",
+        type=int,
+        default=None,
+        help="Number of samples to use for evaluation. If None, use entire validation set.",
+    )
 
     args = parser.parse_args()
 
@@ -134,6 +146,16 @@ def main():
     # Create model and move to appropriate device
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = timm.create_model(args.timm_model_name, pretrained=True, num_classes=1000).to(device)
+
+    # Evaluate base model if requested
+    if args.evaluate:
+        print("\n=== Evaluating Base Model ===")
+        data_config = timm.data.resolve_model_data_config(model)
+        transforms = timm.data.create_transform(**data_config, is_training=False)
+        top1, top5 = evaluate(
+            model, transforms, batch_size=args.batch_size, num_examples=args.eval_data_size
+        )
+        print(f"Base Model - Top-1 Accuracy: {top1:.2f}%, Top-5 Accuracy: {top5:.2f}%")
 
     # Select quantization config
     config = QUANT_CONFIG_DICT[args.quantize_mode]
@@ -150,6 +172,19 @@ def main():
 
     # Quantize model
     quantized_model = quantize_model(model, config, data_loader)
+
+    # Evaluate quantized model if requested
+    if args.evaluate:
+        print("\n=== Evaluating Quantized Model ===")
+        data_config = timm.data.resolve_model_data_config(quantized_model)
+        transforms = timm.data.create_transform(**data_config, is_training=False)
+        top1, top5 = evaluate(
+            quantized_model,
+            transforms,
+            batch_size=args.batch_size,
+            num_examples=args.eval_data_size,
+        )
+        print(f"Quantized Model - Top-1 Accuracy: {top1:.2f}%, Top-5 Accuracy: {top5:.2f}%")
 
     # Export to ONNX
     export_to_onnx(
