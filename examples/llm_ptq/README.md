@@ -28,7 +28,7 @@ This section focuses on Post-training quantization, a technique that reduces mod
 ### Docker
 
 For Hugging Face models, please use the TensorRT-LLM docker image (e.g., `nvcr.io/nvidia/tensorrt-llm/release:1.1.0rc2.post2`).
-For NeMo models, use the NeMo container (e.g., `nvcr.io/nvidia/nemo:25.07`).
+For NeMo models, use the NeMo container (e.g., `nvcr.io/nvidia/nemo:25.09`).
 Visit our [installation docs](https://nvidia.github.io/TensorRT-Model-Optimizer/getting_started/2_installation.html) for more information.
 
 Also follow the installation steps below to upgrade to the latest version of Model Optimizer and install example-specific dependencies.
@@ -260,7 +260,7 @@ accelerate launch --config_file fsdp2.yaml \
     --calib_size <num_calib_samples> \
     --dataset <dataset> \
     --export_path <export_path> \
-    --trust_remote_code 
+    --trust_remote_code
 ```
 
 The exported checkpoint can be deployed using TensorRT-LLM/ vLLM/ SGLang. For more details refer to the [deployment section](#deployment) of this document.

@@ -68,7 +68,7 @@ ONNX_TYPES = [t.onnx_type for t in PRECISION_MAP.values()]
 OP_TYPES_NOT_SUPPORTED_IN_LOW_PRECISION = ["Upsample", "NonMaxSuppression", "Celu"]
 
 # Temporarily block these ops in low precision, as they are not supported yet
-OP_TYPES_NOT_SUPPORTED_IN_LOW_PRECISION.extend(["Scan", "If", "Loop", "LSTM"])
+OP_TYPES_NOT_SUPPORTED_IN_LOW_PRECISION.extend(["Scan", "If", "Loop"])
 
 # Mapping of op types to indices of inputs that should not be converted to low precision.
 SKIP_LOW_PRECISION_MAPPING_FP16 = {"Resize": {2}}
@@ -99,6 +99,7 @@ class PrecisionConverter:
         min_opset: int = 13,
         max_ir_version: int | None = None,
         trt_plugins: list[str] | None = [],
+        tensor_block_dict: dict[str, dict[str, list[int]]] = {},
     ) -> None:
         """Initialize PrecisionConverter.
 
@@ -112,6 +113,10 @@ class PrecisionConverter:
             init_conversion_max_bytes: Maximum size in bytes for initializer conversion. Larger initializers will be
                                        cast at runtime.
             custom_ops: List of custom ops.
+            min_opset: Minimum opset for conversion.
+            max_ir_version: Max IR version for conversion.
+            trt_plugins: List of custom TensorRT plugin library paths in .so format (compiled shared library).
+            tensor_block_dict: Dictionary of tensors (operation type and I/O indices) that should remain in FP32.
         """
         self.model = deepcopy(model)
         self.value_info_map = value_info_map
@@ -147,6 +152,9 @@ class PrecisionConverter:
                 self.low_precision_type.str_full,
             )
         )
+
+        # Custom mapping of op types to indices of inputs that should not be converted to low precision
+        self.skip_inputs_map = self._create_skip_inputs_mapping(tensor_block_dict)
 
     def convert(
         self,
@@ -211,7 +219,8 @@ class PrecisionConverter:
                 # For the low precision nodes that take a FP32 input, we don't exclude it from
                 # casting up so that the input can be converted to FP32 as expected.
                 exclude_consumers = list(
-                    set(low_precision_nodes) - {fp32_input_to_low_precision_node[tensor_name].name}
+                    set(low_precision_nodes)
+                    - {n.name for n in fp32_input_to_low_precision_node[tensor_name]}
                 )
             self._add_cast(
                 tensor_name,
@@ -467,12 +476,14 @@ class PrecisionConverter:
         return high_precision_nodes, low_precision_nodes
 
     def _get_tensors_to_cast(
-        self, low_precision_nodes: list[str]
-    ) -> tuple[list[str], list[str], dict[str, onnx.NodeProto]]:
+        self,
+        low_precision_nodes: list[str],
+        high_precision_tensors: dict[str, dict[str, list[int]]] = {},
+    ) -> tuple[list[str], list[str], dict[str, list[onnx.NodeProto]]]:
         cast_to_fp16 = []  # Tensors to cast down to FP16
         cast_to_fp32 = []  # Tensors to cast up to FP32
         # Keep track of the low precision nodes that take a FP32 input.
-        fp32_input_to_low_precision_node = {}
+        fp32_input_to_low_precision_node = defaultdict(list)
 
         # Get tensors for FP16 nodes
         for node in self.model.graph.node:
@@ -481,7 +492,7 @@ class PrecisionConverter:
                 for input in node.input:
                     if self._should_skip_low_precision_input_conversion(node, input):
                         cast_to_fp32.append(input)
-                        fp32_input_to_low_precision_node[input] = node
+                        fp32_input_to_low_precision_node[input].append(node)
                     else:
                         cast_to_fp16.append(input)
 
@@ -536,7 +547,7 @@ class PrecisionConverter:
             low_precision_nodes: List of node names that should use low precision initializers.
             high_precision_nodes: List of node names that should use high precision initializers.
         """
-        # 1. Compute a mapping from initiailizers to high precision nodes & low precision nodes that use them.
+        # 1. Compute a mapping from initializers to high precision nodes & low precision nodes that use them.
         low_precision_nodes_set: set[str] = set(low_precision_nodes)
         high_precision_nodes_set: set[str] = set(high_precision_nodes)
         initializer_to_nodes: dict[str, InitializerConsumerTracker] = defaultdict(
@@ -888,7 +899,7 @@ class PrecisionConverter:
         )
 
         if tensor_to_consumers is None:
-            utils.get_consumer_nodes(self.model, tensor_name)
+            consumer_nodes = utils.get_consumer_nodes(self.model, tensor_name)
         else:
             consumer_nodes = tensor_to_consumers.get(tensor_name, [])
         consumer_nodes = [n for n in consumer_nodes if n.name not in exclude_consumers]
@@ -1272,13 +1283,9 @@ class PrecisionConverter:
         graph_sanitizer.sanitize()
         self.model = graph_sanitizer.model
 
-    def _should_skip_low_precision_input_conversion(
-        self, node: onnx.NodeProto, input_name: str
-    ) -> bool:
-        """Check if the input should be skipped for low precision conversion.
-
-        This is used for nodes that have inputs that MUST remain in FP32.
-        """
+    def _create_skip_inputs_mapping(self, tensor_block_dict: dict[str, dict[str, list[int]]] = {}):
+        """Create mapping of op types to indices of inputs that should not be converted to low precision."""
+        skip_inputs_map = {}
         match self.low_precision_type.str_short:
             case "fp16":
                 skip_inputs_map = SKIP_LOW_PRECISION_MAPPING_FP16
@@ -1287,12 +1294,27 @@ class PrecisionConverter:
             case _:
                 raise ValueError(f"Unsupported low precision type: {self.low_precision_type}")
 
-        if node.op_type in skip_inputs_map:
+        # Update mapping with user-defined information
+        for op, tensor_map in tensor_block_dict.items():
+            high_precision_tensor = tensor_map.get("inp", [])
+            if high_precision_tensor:
+                skip_inputs_map.update({op: set(high_precision_tensor)})
+
+        return skip_inputs_map
+
+    def _should_skip_low_precision_input_conversion(
+        self, node: onnx.NodeProto, input_name: str
+    ) -> bool:
+        """Check if the input should be skipped for low precision conversion.
+
+        This is used for nodes that have inputs that MUST remain in FP32.
+        """
+        if node.op_type in self.skip_inputs_map:
             # Figure out the index of the input in the node input
             inputs_lst = list(node.input)
             if input_name not in inputs_lst:
                 raise ValueError(f"Input {input_name} not found in node {node.name}.")
             input_index = inputs_lst.index(input_name)
             # Check if we should skip this input for low precision conversion
-            return input_index in skip_inputs_map[node.op_type]
+            return input_index in self.skip_inputs_map[node.op_type]
         return False
