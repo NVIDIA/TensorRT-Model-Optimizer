@@ -1,6 +1,5 @@
 # Compress Algorithm Tutorial
 
-This tutorial demonstrates how to compress large language models using the Compress algorithm based on the [Puzzle paper](https://arxiv.org/abs/2411.19146).
 This tutorial demonstrates how to compress large language models using the compress algorithm based on the [Puzzle paper](https://arxiv.org/abs/2411.19146).
 The goal of the algorithm it to find the most optimal modifications to MLP and attention layers of the model, resulting in a heterogeneous model architecture.
 The supported modifications are:
