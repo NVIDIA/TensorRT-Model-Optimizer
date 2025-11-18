@@ -13,6 +13,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # mypy: ignore-errors
+
+"""Provides a function to register activation hooks for a model.
+Activation hooks are used to compute activation scores for pruning."""
+
 import re
 
 from modelopt.torch._compress.activation_scoring.activation_hooks import hooks

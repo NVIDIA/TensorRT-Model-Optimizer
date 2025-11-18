@@ -13,6 +13,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # mypy: ignore-errors
+
+"""Provides hooks for capturing the inputs and the outputs of pytorch modules that are used for
+activation scoring for pruning.
+"""
+
 import argparse
 import gc
 import json
