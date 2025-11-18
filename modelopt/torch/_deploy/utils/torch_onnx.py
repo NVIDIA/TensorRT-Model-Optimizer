@@ -32,20 +32,18 @@ from onnxconverter_common import convert_float_to_float16
 from torch.nn.parallel import DataParallel, DistributedDataParallel
 
 from modelopt.onnx.autocast.convert import convert_to_f16
-from modelopt.onnx.quantization.qdq_utils import (
-    fp4qdq_to_2dq,
-    qdq_to_dq,
-    quantize_weights_to_int4,
-    quantize_weights_to_mxfp8,
-    replace_zero_scale_with_smallest_nonzero,
-)
 from modelopt.onnx.export.quant_exporter import (
     INT4QuantExporter,
     MXFP8QuantExporter,
     NVFP4QuantExporter,
     ONNXQuantExporter,
 )
-from modelopt.onnx.quantization.qdq_utils import fp4qdq_to_2dq, qdq_to_dq, quantize_weights_to_mxfp8
+from modelopt.onnx.quantization.qdq_utils import (
+    fp4qdq_to_2dq,
+    qdq_to_dq,
+    quantize_weights_to_mxfp8,
+    replace_zero_scale_with_smallest_nonzero,
+)
 from modelopt.onnx.utils import (
     get_input_names,
     get_input_shapes,
@@ -368,6 +366,8 @@ def is_fp8_quantized(model: nn.Module) -> bool:
         ):
             return True
     return False
+
+
 def quantize_weights(model: nn.Module, onnx_model: onnx.ModelProto) -> onnx.ModelProto:
     """Real quantizes the weights in the onnx model.
 

@@ -1051,7 +1051,7 @@ def replace_zero_scale_with_smallest_nonzero(onnx_model: onnx.ModelProto) -> onn
     return onnx_model
 
 
-def _cast_initializer_to_dtype(
+def cast_initializer_to_dtype(
     node: onnx.NodeProto, dtype: str, initializer_map: dict[str, onnx.TensorProto]
 ):
     """Casts the initializer to the given dtype."""
