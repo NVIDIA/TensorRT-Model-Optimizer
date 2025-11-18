@@ -253,6 +253,21 @@ class INT4QuantExporter(ONNXQuantExporter):
         initializer_map = {initializer.name: initializer for initializer in graph.initializer}
         nodes_to_remove = []
 
+        def is_fp32_cast(node: onnx.NodeProto) -> bool:
+            return node.op_type == "Cast" and any(
+                attr.name == "to" and attr.i == onnx.TensorProto.FLOAT for attr in node.attribute
+            )
+
+        # Remove Cast nodes after specific operators
+        for node in graph.node:
+            if node.op_type in ["Transpose", "Reshape", "Sqrt", "Add", "Gelu"]:
+                child_nodes = [n for n in graph.node if node.output[0] in n.input]
+                if len(child_nodes) == 1 and is_fp32_cast(child_nodes[0]):
+                    cast_node = child_nodes[0]
+                    node.output.clear()
+                    node.output.extend(cast_node.output)
+                    nodes_to_remove.append(cast_node.name)
+
         # Remove unnecessay Cast after Pre-quant scale
         for node in graph.node:
             if is_pre_quant_scale_node(node):
