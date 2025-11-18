@@ -20,7 +20,6 @@ import shutil
 import sys
 import warnings
 from pathlib import Path
-from typing import Any
 
 import torch
 import transformers
@@ -159,7 +158,7 @@ def build_quant_cfg(
 
         # Check if any bmm_quantizer is in the quant_cfg. If so, we need to enable the bmm_quantizer.
         if enable_quant_kv_cache:
-            quant_cfg = apply_kv_cache_quant(
+            quant_cfg = mtq.update_quant_cfg_with_kv_cache_quant(
                 quant_cfg,
                 getattr(mtq, kv_quant_cfg_choices[kv_cache_qformat])["quant_cfg"],
             )
@@ -270,6 +269,13 @@ def get_model(
     if device == "cpu":
         device_map = "cpu"
 
+    # Add VILA to sys.path before loading config if needed
+    if "vila" in ckpt_path.lower():
+        vila_path = os.path.join(ckpt_path, "..", "VILA")
+        if vila_path not in sys.path:
+            sys.path.append(vila_path)
+        from llava.model import LlavaLlamaConfig, LlavaLlamaModel  # noqa: F401
+
     # Prepare config kwargs for loading
     config_kwargs = {"trust_remote_code": trust_remote_code} if trust_remote_code else {}
 
@@ -295,8 +301,6 @@ def get_model(
         model_kwargs.setdefault("torch_dtype", "auto")
 
     if "vila" in ckpt_path.lower():
-        sys.path.append(os.path.join(ckpt_path, "..", "VILA"))
-        from llava.model import LlavaLlamaConfig, LlavaLlamaModel  # noqa: F401
         from transformers import AutoModel
 
         hf_vila = AutoModel.from_pretrained(
@@ -396,20 +400,6 @@ def is_model_on_gpu(model) -> bool:
 def is_enc_dec(model_type) -> bool:
     """Return if the model is a encoder-decoder model."""
     return model_type in ["t5", "bart", "whisper"]
-
-
-def apply_kv_cache_quant(quant_cfg: dict[str, Any], kv_cache_quant_cfg: dict[str, Any]):
-    """Apply quantization to the kv cache of the model."""
-    # Update KV cache related bmm quantizers
-    # If quant_cfg["quant_cfg"] is None, it corresponds to only kv cache quantization case
-    quant_cfg["quant_cfg"] = quant_cfg.get("quant_cfg", {"default": {"enable": False}})
-    quant_cfg["quant_cfg"].update(kv_cache_quant_cfg)
-
-    # Set default algorithm for kv cache quantization if not provided.
-    if not quant_cfg.get("algorithm"):
-        quant_cfg["algorithm"] = "max"
-
-    return quant_cfg
 
 
 def _resolve_model_path(model_name_or_path: str, trust_remote_code: bool = False) -> str:
@@ -521,10 +511,10 @@ def copy_custom_model_files(source_path: str, export_path: str, trust_remote_cod
     # Common patterns for custom model files that need to be copied
     custom_file_patterns = [
         "configuration_*.py",
-        "modeling_*.py",
+        "modeling*.py",
         "tokenization_*.py",
         "processing_*.py",
-        "image_processing_*.py",
+        "image_processing*.py",
         "feature_extraction_*.py",
         "*.json",
     ]

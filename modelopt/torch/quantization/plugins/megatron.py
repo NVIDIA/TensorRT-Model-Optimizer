@@ -23,6 +23,7 @@ import megatron.core.parallel_state as mcore_parallel
 import megatron.core.tensor_parallel.layers as megatron_parallel
 import megatron.core.transformer.mlp as megatron_mlp
 import megatron.core.transformer.moe.experts as megatron_moe
+import megatron.core.transformer.moe.moe_layer as megatron_moe_layer
 import torch
 from megatron.core.parallel_state import get_data_parallel_group
 from megatron.core.tensor_parallel.mappings import gather_from_sequence_parallel_region
@@ -36,7 +37,8 @@ from modelopt.torch.opt.plugins.megatron import (
 )
 from modelopt.torch.utils.distributed import ParallelState
 
-from ..nn import QuantModuleRegistry, TensorQuantizer
+from ..model_calib import max_calibrate
+from ..nn import QuantModule, QuantModuleRegistry, TensorQuantizer
 from ..nn.modules.quant_linear import RealQuantLinear
 from ..qtensor import QTensorWrapper
 from .custom import CUSTOM_MODEL_PLUGINS, _ParallelLinear
@@ -44,6 +46,7 @@ from .custom import CUSTOM_MODEL_PLUGINS, _ParallelLinear
 try:
     from megatron.core.extensions.transformer_engine import (
         TEColumnParallelGroupedLinear,
+        TEDotProductAttention,
         TERowParallelGroupedLinear,
     )
 
@@ -247,6 +250,14 @@ class _MegatronParallelLinear(_ParallelLinear):
                 data_parallel_group,
                 mcore_parallel.get_tensor_model_parallel_group(),
             )
+
+        if getattr(self, "gradient_accumulation_fusion", False):
+            warnings.warn(
+                "gradient_accumulation_fusion is not supported with ModelOpt quantization. "
+                "Setting gradient_accumulation_fusion to False."
+            )
+            self.gradient_accumulation_fusion = False
+
         super()._setup()
 
     def _process_quantizer_amax(self, k, v, quantizer_state_dict):
@@ -580,3 +591,189 @@ if HAS_TE:
             # initialize parallel state for submodules linear_fc1 and linear_fc2
             self.linear_fc1.parallel_state = self.parallel_state
             self.linear_fc2.parallel_state = self.parallel_state
+
+    @QuantModuleRegistry.register({TEDotProductAttention: "TEDotProductAttention"})
+    class _QuantTEDotProductAttention(QuantModule):
+        """Quantized version of TEDotProductAttention for Megatron models with KV cache quantization.
+
+        This class adds KV cache quantization support to Transformer Engine's TEDotProductAttention
+        module used in Megatron-Core models. It introduces three quantizers (q_bmm_quantizer,
+        k_bmm_quantizer, v_bmm_quantizer) that quantize the query, key, and value tensors after
+        RoPE has been applied.
+        """
+
+        def _setup(self):
+            """Initialize quantizers for Q, K, V tensors."""
+            self.q_bmm_quantizer = TensorQuantizer()
+            self.k_bmm_quantizer = TensorQuantizer()
+            self.v_bmm_quantizer = TensorQuantizer()
+
+        def _calibrate_quantizers(self):
+            """Calibrate quantizers with minimal dummy tensors."""
+            # Get device and dtype from the parent module's parameters
+            param = next(iter(self.parameters()), None)
+            device = param.device if param is not None else torch.device("cuda")
+            dtype = param.dtype if param is not None else torch.float16
+
+            # TEDotProductAttention expects format 'sbhd' or 'bshd' depending on rope_fusion
+            batch_size = 1
+            seq_len = 1
+
+            # Get dimensions from config
+            num_heads = self.config.num_attention_heads
+            head_dim = (
+                self.config.kv_channels
+                if hasattr(self.config, "kv_channels")
+                else self.config.hidden_size // num_heads
+            )
+
+            # Determine tensor format (default to sbhd if not specified)
+            apply_rope_fusion = getattr(self.config, "apply_rope_fusion", False)
+            qkv_format = "bshd" if apply_rope_fusion else "sbhd"
+
+            if qkv_format == "sbhd":
+                dummy_tensor = torch.randn(
+                    seq_len, batch_size, num_heads, head_dim, device=device, dtype=dtype
+                )
+            else:
+                dummy_tensor = torch.randn(
+                    batch_size, seq_len, num_heads, head_dim, device=device, dtype=dtype
+                )
+
+            # Calibrate each quantizer
+            quantizers = [
+                ("q_bmm_quantizer", self.q_bmm_quantizer),
+                ("k_bmm_quantizer", self.k_bmm_quantizer),
+                ("v_bmm_quantizer", self.v_bmm_quantizer),
+            ]
+
+            for _, quantizer in quantizers:
+                if quantizer is not None and quantizer.is_enabled():
+                    if not hasattr(quantizer, "_amax") or quantizer._amax is None:
+                        quantizer.reset_amax()
+                        max_calibrate(quantizer, lambda q: q(dummy_tensor), distributed_sync=False)
+
+        def forward(self, query, key, value, *args, **kwargs):
+            """Apply post-RoPE quantization to KV cache.
+
+            TEDotProductAttention receives Q, K, V after RoPE is applied,
+            so we quantize them directly for KV cache quantization.
+            """
+            # Quantize Q, K, V
+            query = self.q_bmm_quantizer(query)
+            key = self.k_bmm_quantizer(key)
+            value = self.v_bmm_quantizer(value)
+
+            return super().forward(query, key, value, *args, **kwargs)
+
+        def sharded_state_dict(self, prefix="", sharded_offsets=(), metadata=None):
+            """Create a sharded state dictionary for distributed checkpointing."""
+            sharded_state_dict = {}
+
+            # First add non-quantizer parameters
+            for k, v in self.state_dict(prefix="", keep_vars=True).items():
+                if isinstance(v, torch.Tensor) and v is not None and "_quantizer" not in k:
+                    sharded_state_dict[prefix + k] = v
+
+            # Process _amax in bmm_quantizers
+            for name, quantizer in [
+                ("q_bmm_quantizer", self.q_bmm_quantizer),
+                ("k_bmm_quantizer", self.k_bmm_quantizer),
+                ("v_bmm_quantizer", self.v_bmm_quantizer),
+            ]:
+                if hasattr(quantizer, "_amax") and quantizer._amax is not None:
+                    amax_key = f"{prefix}{name}._amax"
+                    sharded_state_dict[amax_key] = quantizer._amax
+
+            # Process other quantizer parameters in bmm_quantizers
+            quantizer_state_dict = {
+                k: v
+                for k, v in self.state_dict(prefix="", keep_vars=True).items()
+                if isinstance(v, torch.Tensor) and "_quantizer" in k and "_amax" not in k
+            }
+
+            if quantizer_state_dict:
+                sharded_state_dict.update(
+                    **make_sharded_tensors_for_checkpoint(
+                        quantizer_state_dict, prefix, {}, sharded_offsets
+                    )
+                )
+
+            return sharded_state_dict
+
+        def _load_from_state_dict(self, state_dict, prefix, *args, **kwargs):
+            """Handle loading state dict for quantizers."""
+            for quantizer_name in ["q_bmm_quantizer", "k_bmm_quantizer", "v_bmm_quantizer"]:
+                full_prefix = f"{prefix}{quantizer_name}."
+                amax_key = f"{prefix}{quantizer_name}._amax"
+
+                # If amax is in state_dict, rename it to the format expected by TensorQuantizer
+                if amax_key in state_dict:
+                    expected_amax_key = f"{full_prefix}_amax"
+                    state_dict[expected_amax_key] = state_dict.pop(amax_key)
+
+            # Handle other quantizer states
+            for k in list(state_dict.keys()):
+                if "_quantizer" in k and "_amax" not in k:
+                    name = k.split(prefix)[-1] if prefix else k
+                    if name in self.state_dict():
+                        state_dict[k] = state_dict[k].view_as(self.state_dict()[name])
+
+            super()._load_from_state_dict(state_dict, prefix, *args, **kwargs)
+
+        def modelopt_post_restore(self, name=""):
+            """Restore quantizer states after model loading."""
+            super().modelopt_post_restore(name)
+
+            def _check_unsupported_states(quantizer):
+                """Check for unsupported quantizer states and warn if found."""
+                if not hasattr(quantizer, "state_dict"):
+                    return
+
+                for k in quantizer.state_dict():
+                    if k not in ["_amax", "_pre_quant_scale"]:
+                        warnings.warn(
+                            f"Restore of {k} for {name} is not supported. The restore of this layer might be "
+                            f"incorrect. Please implement a custom restore for {k}."
+                        )
+
+            calibration_needed = False
+
+            for quantizer_name, quantizer in [
+                ("q_bmm_quantizer", self.q_bmm_quantizer),
+                ("k_bmm_quantizer", self.k_bmm_quantizer),
+                ("v_bmm_quantizer", self.v_bmm_quantizer),
+            ]:
+                if not hasattr(self, quantizer_name) or not quantizer.is_enabled():
+                    continue
+
+                _check_unsupported_states(quantizer)
+
+                if not hasattr(quantizer, "_amax") or quantizer._amax is None:
+                    calibration_needed = True
+
+            if calibration_needed:
+                self._calibrate_quantizers()
+
+
+@QuantModuleRegistry.register({megatron_moe_layer.MoELayer: "megatron_moe_MoELayer"})
+class _QuantMoELayer(QuantModule):
+    """Module to support special handling of token dispatching during calibration.
+
+    During calibration, we forward all tokens to all experts so that all experts see sufficient tokens to calibrate.
+    However, even in calibration mode, the actual top_k routing is used to calculate the actual outputs this instance
+    returns.
+
+    If calibration is not enabled, this module behaves as a normal MoELayer.
+    """
+
+    def _setup(self):
+        pass
+
+    def forward(self, hidden_states):
+        if any(getattr(m, "_if_calib", False) for m in self.experts.modules()):
+            original_top_k = self.router.topk
+            self.router.topk = self.router.num_experts
+            super().forward(hidden_states)
+            self.router.topk = original_top_k
+        return super().forward(hidden_states)

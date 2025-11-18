@@ -15,6 +15,7 @@
 
 import argparse
 
+import numpy as np
 import torch
 from onnx_utils.export import (
     generate_dummy_inputs_and_dynamic_axes_and_shapes,
@@ -40,13 +41,16 @@ MODEL_ID = {
     "flux-schnell": ModelType.FLUX_SCHNELL,
 }
 
-dtype_map = {
-    "Half": torch.float16,
-    "BFloat16": torch.bfloat16,
-    "Float": torch.float32,
+DTYPE_MAP = {
+    "sdxl-1.0": torch.float16,
+    "sdxl-turbo": torch.float16,
+    "sd3-medium": torch.float16,
+    "flux-dev": torch.bfloat16,
+    "flux-schnell": torch.bfloat16,
 }
 
 
+@torch.inference_mode()
 def generate_image(pipe, prompt, image_name):
     seed = 42
     image = pipe(
@@ -59,56 +63,56 @@ def generate_image(pipe, prompt, image_name):
     print(f"Image generated saved as {image_name}")
 
 
-def benchmark_model(
-    pipe, prompt, num_warmup=10, num_runs=50, num_inference_steps=20, model_dtype="Half"
+@torch.inference_mode()
+def benchmark_backbone_standalone(
+    pipe,
+    num_warmup=10,
+    num_benchmark=100,
+    model_name="flux-dev",
 ):
-    """Benchmark the backbone model inference time."""
+    """Benchmark the backbone model directly without running the full pipeline."""
     backbone = pipe.transformer if hasattr(pipe, "transformer") else pipe.unet
 
-    backbone_times = []
+    # Generate dummy inputs for the backbone
+    dummy_inputs, _, _ = generate_dummy_inputs_and_dynamic_axes_and_shapes(model_name, backbone)
+
+    # Extract the dict from the tuple and move to cuda
+    dummy_inputs_dict = {
+        k: v.cuda() if isinstance(v, torch.Tensor) else v for k, v in dummy_inputs[0].items()
+    }
+
+    # Warmup
+    print(f"Warming up: {num_warmup} iterations")
+    for _ in tqdm(range(num_warmup), desc="Warmup"):
+        _ = backbone(**dummy_inputs_dict)
+
+    # Benchmark
+    torch.cuda.synchronize()
     start_event = torch.cuda.Event(enable_timing=True)
     end_event = torch.cuda.Event(enable_timing=True)
 
-    def forward_pre_hook(_module, _input):
+    print(f"Benchmarking: {num_benchmark} iterations")
+    times = []
+    for _ in tqdm(range(num_benchmark), desc="Benchmark"):
+        torch.cuda.profiler.cudart().cudaProfilerStart()
         start_event.record()
-
-    def forward_hook(_module, _input, _output):
+        _ = backbone(**dummy_inputs_dict)
         end_event.record()
         torch.cuda.synchronize()
-        backbone_times.append(start_event.elapsed_time(end_event))
+        torch.cuda.profiler.cudart().cudaProfilerStop()
+        times.append(start_event.elapsed_time(end_event))
 
-    pre_handle = backbone.register_forward_pre_hook(forward_pre_hook)
-    post_handle = backbone.register_forward_hook(forward_hook)
+    avg_latency = sum(times) / len(times)
+    p50 = np.percentile(times, 50)
+    p95 = np.percentile(times, 95)
+    p99 = np.percentile(times, 99)
 
-    try:
-        print(f"Starting warmup: {num_warmup} runs")
-        for _ in tqdm(range(num_warmup), desc="Warmup"):
-            with torch.amp.autocast("cuda", dtype=dtype_map[model_dtype]):
-                _ = pipe(
-                    prompt,
-                    output_type="pil",
-                    num_inference_steps=num_inference_steps,
-                    generator=torch.Generator("cuda").manual_seed(42),
-                )
+    print("\nBackbone-only inference latency:")
+    print(f"  Average: {avg_latency:.2f} ms")
+    print(f"  P50: {p50:.2f} ms")
+    print(f"  P95: {p95:.2f} ms")
+    print(f"  P99: {p99:.2f} ms")
 
-        backbone_times.clear()
-
-        print(f"Starting benchmark: {num_runs} runs")
-        for _ in tqdm(range(num_runs), desc="Benchmark"):
-            with torch.amp.autocast("cuda", dtype=dtype_map[model_dtype]):
-                _ = pipe(
-                    prompt,
-                    output_type="pil",
-                    num_inference_steps=num_inference_steps,
-                    generator=torch.Generator("cuda").manual_seed(42),
-                )
-    finally:
-        pre_handle.remove()
-        post_handle.remove()
-
-    total_backbone_time = sum(backbone_times)
-    avg_latency = total_backbone_time / (num_runs * num_inference_steps)
-    print(f"Inference latency of the torch backbone: {avg_latency:.2f} ms")
     return avg_latency
 
 
@@ -125,13 +129,6 @@ def main():
         type=str,
         default=None,
         help="Path to the model if not using default paths in MODEL_ID mapping.",
-    )
-    parser.add_argument(
-        "--model-dtype",
-        type=str,
-        default="Half",
-        choices=["Half", "BFloat16", "Float"],
-        help="Precision used to load the model.",
     )
     parser.add_argument(
         "--restore-from", type=str, default=None, help="Path to the modelopt quantized checkpoint"
@@ -167,13 +164,16 @@ def main():
     args = parser.parse_args()
 
     image_name = args.save_image_as if args.save_image_as else f"{args.model}.png"
+    model_dtype = DTYPE_MAP[args.model]
 
     pipe = PipelineManager.create_pipeline_from(
         MODEL_ID[args.model],
-        dtype_map[args.model_dtype],
+        torch_dtype=model_dtype,
         override_model_path=args.override_model_path,
     )
 
+    if args.torch_compile:
+        assert args.torch, "Torch mode must be enabled when torch_compile is used"
     # Save the backbone of the pipeline and move it to the GPU
     add_embedding = None
     backbone = None
@@ -188,14 +188,10 @@ def main():
     if args.restore_from:
         mto.restore(backbone, args.restore_from)
 
-    if args.torch_compile:
-        assert args.model_dtype in ["BFloat16", "Float", "Half"], (
-            "torch.compile() only supports BFloat16 and Float"
-        )
-        print("Compiling backbone with torch.compile()...")
-        backbone = torch.compile(backbone, mode="max-autotune")
-
     if args.torch:
+        if args.torch_compile:
+            print("Compiling backbone with torch.compile()...")
+            backbone = torch.compile(backbone, mode="max-autotune")
         if hasattr(pipe, "transformer"):
             pipe.transformer = backbone
         elif hasattr(pipe, "unet"):
@@ -203,7 +199,12 @@ def main():
         pipe.to("cuda")
 
         if args.benchmark:
-            benchmark_model(pipe, args.prompt, model_dtype=args.model_dtype)
+            benchmark_backbone_standalone(
+                pipe,
+                num_warmup=10,
+                num_benchmark=100,
+                model_name=args.model,
+            )
 
         if not args.skip_image:
             generate_image(pipe, args.prompt, image_name)
@@ -250,9 +251,15 @@ def main():
         dq_only=args.dq_only,
     )
 
+    # Delete the original backbone and empty the cache
+    del backbone
+    torch.cuda.empty_cache()
+
     if not args.trt_engine_load_path:
         # Compile the TRT engine from the exported ONNX model
         compiled_model = client.ir_to_compiled(onnx_bytes, compilation_args)
+        # Clear onnx_bytes to free memory
+        del onnx_bytes
         # Save TRT engine for future use
         with open(f"{args.model}.plan", "wb") as f:
             # Remove the SHA-256 hash from the compiled model, used to maintain state in the trt_client
@@ -276,8 +283,7 @@ def main():
     if hasattr(pipe, "unet") and add_embedding:
         setattr(device_model, "add_embedding", add_embedding)
 
-    # Move the backbone back to the CPU and set the backbone to the compiled device model
-    backbone.to("cpu")
+    # Set the backbone to the device model
     if hasattr(pipe, "unet"):
         pipe.unet = device_model
     elif hasattr(pipe, "transformer"):
