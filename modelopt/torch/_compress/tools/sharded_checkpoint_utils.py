@@ -29,6 +29,7 @@ import torch
 import torch.distributed
 import torch.nn as nn
 from huggingface_hub import split_torch_state_dict_into_shards
+from puzzle_tools.deci_lm_hf_code.modeling_decilm import DeciLMForCausalLM
 from safetensors import safe_open
 from safetensors.torch import load_file as safe_load_file
 from safetensors.torch import save_file as safe_save_file
@@ -36,17 +37,16 @@ from tqdm import tqdm
 from transformers.utils import SAFE_WEIGHTS_INDEX_NAME, SAFE_WEIGHTS_NAME
 from transformers.utils.hub import cached_file, get_checkpoint_shard_files
 from typing_extensions import override
-from utils.utils import EmptyInitOnDevice
 
 from modelopt.torch._compress.decilm.deci_lm_hf_code.configuration_decilm import DeciLMConfig
 from modelopt.torch._compress.decilm.deci_lm_hf_code.modeling_decilm import (
     DeciLMDecoderLayer,
-    DeciLMForCausalLM,
     rope_type_to_class,
 )
 from modelopt.torch._compress.tools.checkpoint_utils import load_model_config, load_state_dict
 from modelopt.torch._compress.tools.logger import mprint
 from modelopt.torch._compress.tools.runtime import IRuntime
+from modelopt.torch._compress.utils.utils import EmptyInitOnDevice
 
 
 class DummyModule(nn.Module):
@@ -392,7 +392,7 @@ def load_sharded_state_dict(
             partial_state_dict.update(shard)
         else:
             with safe_open(safetensors_path, framework="pt", device=str(device)) as f:
-                for key in f:
+                for key in f.keys():  # noqa: SIM118 - safe_open objects require .keys(), not directly iterable
                     if key in keys_to_load:
                         partial_state_dict[key] = f.get_tensor(key)
     return partial_state_dict
@@ -417,6 +417,6 @@ def load_state_dict_shapes(model_name_or_path: str | Path) -> dict[str, tuple]:
     state_dict_shapes = {}
     for safetensors_path in shard_paths:
         with safe_open(safetensors_path, framework="pt") as f:
-            for key in f:
+            for key in f.keys():  # noqa: SIM118 - safe_open objects require .keys(), not directly iterable
                 state_dict_shapes[key] = tuple(f.get_tensor(key).shape)
     return state_dict_shapes
