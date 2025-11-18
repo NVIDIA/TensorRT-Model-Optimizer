@@ -313,13 +313,19 @@ def _gen_dummy_inp_and_dyn_shapes_wan(backbone, min_bs=1, opt_bs=2):
     channels = 16  # latent channels from VAE
     hidden_size = 4096  # text encoder hidden size (UMT5-XXL)
 
+    # num of frames for wan is 4*n+1, as from the official codebase:
+    # https://github.com/Wan-Video/Wan2.2/blob/e9783574ef77be11fcab9aa5607905402538c08d/generate.py#L126
+    # picking n == 1 as min, n = 20 as opt as 81 is the default num of frames in their code base
     min_num_frames = 4 * 1 + 1
     opt_num_frames = 4 * 20 + 1
 
+    # height and width configs are from their codebase:
+    # https://github.com/Wan-Video/Wan2.2/blob/e9783574ef77be11fcab9aa5607905402538c08d/wan/configs/__init__.py#L21
     min_height = 480
     min_width = 480
 
-    opt_height = 1280
+    # height max can be 1280, but opt setting is 1280x720, so use 720 here
+    opt_height = 720
     opt_width = 1280
 
     min_latent_height = min_height // 8
@@ -518,9 +524,6 @@ def modelopt_export_sd(backbone, onnx_dir, model_name, precision):
     opset_version = 20
 
     with quantizer_context, torch.inference_mode():
-        # program = export(backbone, (), dummy_kwargs, dynamic_shapes=dynamic_shapes, strict=False)
-        # print(f"Exported program: {program}")
-        #    dynamic_shapes=dynamic_shapes,
         onnx_export(
             backbone,
             (),

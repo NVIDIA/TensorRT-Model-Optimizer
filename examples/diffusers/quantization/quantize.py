@@ -67,8 +67,6 @@ from utils import (
 import modelopt.torch.opt as mto
 import modelopt.torch.quantization as mtq
 
-TorchRMSNorm = torch.nn.modules.normalization.RMSNorm
-
 
 class ModelType(str, Enum):
     """Supported model types."""
