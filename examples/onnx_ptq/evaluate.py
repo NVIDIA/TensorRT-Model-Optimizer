@@ -17,9 +17,7 @@ import argparse
 import csv
 
 import timm
-import torch
-from evaluation import evaluate_accuracy
-from torchvision.datasets import ImageNet
+from evaluation import evaluate
 
 from modelopt.torch._deploy._runtime import RuntimeRegistry
 from modelopt.torch._deploy.device_model import DeviceModel
@@ -46,9 +44,6 @@ def main():
         type=str,
         default=None,
         help="Path to the TensorRT timing cache",
-    )
-    parser.add_argument(
-        "--imagenet_path", type=str, default=None, help="Path to the imagenet dataset"
     )
     parser.add_argument(
         "--model_name",
@@ -93,17 +88,13 @@ def main():
     device_model = DeviceModel(client, compiled_model, metadata={})
 
     top1_accuracy, top5_accuracy = 0.0, 0.0
-    if args.imagenet_path:
+    if args.model_name:
         model = timm.create_model(args.model_name, pretrained=False, num_classes=1000)
         data_config = timm.data.resolve_model_data_config(model)
         transforms = timm.data.create_transform(**data_config, is_training=False)
-        val_dataset = ImageNet(root=args.imagenet_path, split="val", transform=transforms)
-        val_loader = torch.utils.data.DataLoader(
-            val_dataset, batch_size=args.batch_size, shuffle=True, num_workers=4
-        )
 
-        top1_accuracy, top5_accuracy = evaluate_accuracy(
-            device_model, val_loader, args.eval_data_size, args.batch_size, topk=(1, 5)
+        top1_accuracy, top5_accuracy = evaluate(
+            device_model, transforms, batch_size=args.batch_size, num_examples=args.eval_data_size
         )
         print(f"The top1 accuracy of the model is {top1_accuracy}%")
         print(f"The top5 accuracy of the model is {top5_accuracy}%")
