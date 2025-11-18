@@ -28,6 +28,7 @@ from typing import Any
 import regex as re
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from tqdm import tqdm
 
 from modelopt.torch.opt.conversion import ModeloptStateManager
@@ -942,8 +943,175 @@ class AutoQuantizeGradientSearcher(_AutoQuantizeBaseSearcher):
         return best_recipes, is_satisfied
 
 
-class AutoQuantizeLossSearcher(_AutoQuantizeBaseSearcher):
-    """A searcher for AutoQuantize algorithm that uses loss based score estimation."""
+@torch.compile
+def _get_kl_div_loss(logits_unquant: torch.Tensor, logits_quant: torch.Tensor) -> torch.Tensor:
+    # TODO: Support TensorParallel
+    prob_unquant = F.softmax(logits_unquant, dim=-1)
+    log_prob_quant = F.log_softmax(logits_quant, dim=-1)
+    return F.kl_div(log_prob_quant, prob_unquant, reduction="sum", log_target=False)
+
+
+class AutoQuantizeKLDivSearcher(_AutoQuantizeBaseSearcher):
+    """A searcher for AutoQuantize algorithm that uses KL-Divergence loss based score estimation."""
+
+    score_module_rules: list[str | Callable] = [lambda name: ""]
+
+    @property
+    def default_search_config(self):
+        """Get the default config for the searcher."""
+        config = super().default_search_config
+        config.update(
+            {
+                "forward_step": None,
+            }
+        )
+        return config
+
+    def sanitize_search_config(self, config: SearchConfig | None) -> SearchConfig:
+        """Sanitize the search config dict."""
+        config = config or {}
+        for ignored_key in ["score_func", "loss_func", "forward_backward_step"]:
+            if ignored_key in config:
+                warnings.warn(
+                    f"`{ignored_key}` is ignored for KL-Divergence loss based `auto_quantize`."
+                )
+                config.pop(ignored_key)
+        config = super().sanitize_search_config(config)
+        assert config["forward_step"] is not None, (
+            "`forward_step` must be provided for KL-Divergence loss based `auto_quantize`. "
+            "`forward_step(model, data)` should return model logits."
+        )
+        return config
+
+    @torch.no_grad()
+    def estimate_sensitivity_scores(self):
+        """Estimate the sensitivity scores for the model.
+
+        Higher score means more sensitive to quantization.
+        """
+        # Check if tensor parallelism is being used
+        for name, module in self.model.named_modules():
+            if hasattr(module, "parallel_state"):
+                if hasattr(module.parallel_state, "tensor_parallel_group"):
+                    if module.parallel_state.tensor_parallel_group.is_initialized():
+                        warnings.warn(
+                            "Tensor Parallel is not supported for KL-Divergence based auto_quantize. "
+                        )
+                        break
+
+        def set_to_unquantized():
+            for name, hparam in named_hparams(self.model, unique=True):
+                if not isinstance(hparam, QuantRecipeHparam):
+                    continue
+                if hparam.is_configurable:
+                    hparam.active = QuantRecipe(quant_cfg=None)
+
+        self.model.eval()
+        num_iters = self.config["num_score_steps"]
+        for _, data in tqdm(
+            zip(range(num_iters), self.config["data_loader"]),
+            desc="Estimating KLDivergence loss",
+            total=num_iters,
+        ):
+            set_to_unquantized()
+            logits_unquant = self.config["forward_step"](self.model, data)
+
+            for name, hparam in named_hparams(self.model, configurable=True):
+                if not isinstance(hparam, QuantRecipeHparam):
+                    continue
+                for recipe in hparam.choices:
+                    if recipe == QuantRecipe(quant_cfg=None):
+                        continue
+                    hparam.active = recipe
+                    logits_quant = self.config["forward_step"](self.model, data)
+                    score = _get_kl_div_loss(logits_unquant, logits_quant)
+                    hparam._importance_dict[recipe][hparam.score_modules[0]] = score
+                hparam.active = QuantRecipe(quant_cfg=None)
+
+    def run_search_with_stats(self, max_weight_size, verbose=False):
+        """Run threshold-based binary search for KLDivergence loss based auto_quantize.
+
+        We use binary search to minimize the max(per-layer score) while meeting the constraint.
+        """
+        # Collect all sensitivity scores to determine initial threshold bounds
+        all_scores = [
+            score for name in self.candidate_stats for score in self.candidate_stats[name]["scores"]
+        ]
+
+        if not all_scores:
+            warnings.warn("No scores available for threshold-based search!")
+            is_satisfied = False
+            return {}, is_satisfied
+
+        # Initialize binary search bounds
+        min_score = min(all_scores)
+        max_score = max(all_scores)
+        threshold = (min_score + max_score) / 2.0
+        lower_bound = min_score
+        upper_bound = max_score
+
+        # Run for fixed number of iterations
+        max_iterations = 100
+
+        if verbose:
+            print_rank_0("AutoQuantize: Starting threshold-based binary search")
+            print_rank_0(f"  Score range: [{min_score:.6e}, {max_score:.6e}]")
+            print_rank_0(f"  Target weight size: {max_weight_size:.2f}")
+
+        for iteration in range(max_iterations):
+            # Select recipes based on current threshold
+            best_recipes = {}
+            total_weight_size = 0.0
+
+            for name in self.candidate_stats:
+                formats = self.candidate_stats[name]["formats"]
+                scores = self.candidate_stats[name]["scores"]
+                costs = self.candidate_stats[name]["costs"]
+
+                selected_idx = 0
+                for idx in range(len(formats)):
+                    if scores[idx] <= threshold:
+                        selected_idx = idx
+                        break
+
+                best_recipes[name] = {
+                    "format": formats[selected_idx],
+                    "costs": costs[selected_idx],
+                    "scores": scores[selected_idx],
+                }
+                total_weight_size += costs[selected_idx]
+
+            # Check if we meet the constraint
+            meets_constraint = total_weight_size <= max_weight_size
+
+            if verbose:
+                print_rank_0(
+                    f"  Iteration {iteration + 1}: threshold={threshold:.6e}, "
+                    f"weight_size={total_weight_size:.2f}, "
+                    f"meets_constraint={meets_constraint}"
+                )
+
+            # Update binary search bounds
+            if meets_constraint:
+                upper_bound = threshold  # Threshold was too aggressive, relax it
+            else:
+                lower_bound = threshold  # Threshold was too lax, tighten it
+
+            # Update threshold for next iteration
+            threshold = (lower_bound + upper_bound) / 2.0
+
+        # Final check if constraint is satisfied
+        is_satisfied = total_weight_size <= max_weight_size
+
+        if verbose:
+            print_rank_0(
+                f"AutoQuantize: Search complete. "
+                f"Final weight size: {total_weight_size:.2f} "
+                f"(target: {max_weight_size:.2f}), "
+                f"constraint satisfied: {is_satisfied}"
+            )
+
+        return best_recipes, is_satisfied
 
 
 # Backward compatibility alias (defaults to gradient-based searcher)

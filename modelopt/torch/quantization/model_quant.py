@@ -31,7 +31,7 @@ from modelopt.torch.opt.utils import forward_with_reshard
 from modelopt.torch.quantization.config import QuantizeConfig
 from modelopt.torch.quantization.conversion import set_quantizer_by_cfg
 
-from .algorithms import AutoQuantizeSearcher, QuantRecipe
+from .algorithms import AutoQuantizeGradientSearcher, AutoQuantizeKLDivSearcher, QuantRecipe
 from .config import QuantizeAlgoCfgType
 from .conversion import set_quantizer_attribute
 from .mode import QuantizeModeRegistry, get_modelike_from_algo_cfg
@@ -246,11 +246,13 @@ def auto_quantize(
     num_calib_steps: int = 512,
     num_score_steps: int = 128,
     verbose: bool = False,
+    method: str = "gradient",
 ):
     r"""Perform optimal per-layer quantization by searching for the best quantization formats per-layer.
 
-    ``auto_quantize`` uses a gradient based sensitivity score to rank the per-layer quantization formats and search
-    for the best quantization formats per-layer.
+    ``auto_quantize`` uses sensitivity scores to rank the per-layer quantization formats and search
+    for the best quantization formats per-layer. The sensitivity score can be computed using gradient-based
+    methods (default) or KL divergence loss, controlled by the ``method`` parameter.
 
     Args:
         model: A pytorch model with quantizer modules.
@@ -373,6 +375,13 @@ def auto_quantize(
         num_score_steps: Number of batches to use for estimating ``auto_quantize`` scores. Suggested value is 128.
             A higher value could increase the time taken for performing ``auto_quantize``.
         verbose: If True, prints the search progress/intermediate results.
+        method: Method to use for estimating sensitivity loss. Higher loss indicates greater sensitivity
+            to quantization. Options are:
+            - ``"gradient"``: (Default) Uses gradient-based loss estimation and linear programming for
+                search. Requires ``loss_func`` or ``forward_backward_step`` to be provided.
+            - ``"kl_div"``: Uses KL divergence loss between unquantized and quantized model outputs. Uses
+                threshold-based binary search. Only requires ``forward_step`` (no loss_func needed).
+                The ``forward_step`` should return model logits for this method.
 
     Returns: A tuple (model, state_dict) where ``model`` is the searched and quantized model and
         ``state_dict`` contains the history and detailed stats of the search procedure.
@@ -435,12 +444,20 @@ def auto_quantize(
         processed_quantization_formats.append((quant_cfg, name))
 
     assert len(processed_quantization_formats) > 0, "`quantization_formats` should not be empty"
+
+    # Select the appropriate searcher based on method
+    if method == "gradient":
+        searcher = AutoQuantizeGradientSearcher()
+    elif method == "kl_div":
+        searcher = AutoQuantizeKLDivSearcher()
+    else:
+        raise ValueError(f"Invalid method: {method}. Valid options are 'gradient' or 'kl_div'.")
+
     model = apply_mode(
         model,
         mode="auto_quantize",
         registry=QuantizeModeRegistry,
     )
-    searcher = AutoQuantizeSearcher()
     search_config = {
         "quantization_formats": processed_quantization_formats,
         "data_loader": data_loader,

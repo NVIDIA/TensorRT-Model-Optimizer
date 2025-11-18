@@ -53,6 +53,7 @@ def create_from_arg_obj(cls: type[T], arg_dict: dict, additional_config: dict | 
 
     quant_cfg = arg_dict.pop("quant_cfg", None)
     auto_quantize_bits = arg_dict.pop("auto_quantize_bits", None)
+    auto_quantize_method = arg_dict.pop("auto_quantize_method", "gradient")
     calib_batch_size = arg_dict.pop("calib_batch_size", None)
     calib_size = arg_dict.pop("calib_size", 512)
     compress = arg_dict.pop("compress", False)
@@ -81,6 +82,7 @@ def create_from_arg_obj(cls: type[T], arg_dict: dict, additional_config: dict | 
             batch_size=calib_batch_size,
             calib_size=calib_size,
             auto_quantize_bits=auto_quantize_bits,
+            auto_quantize_method=auto_quantize_method,
             test_generated=False,
             compress=compress,
         )
@@ -107,6 +109,17 @@ def setup_parser_with_modelopt_args():
         help=(
             "Effective bits constraint for auto_quantize. If not set, "
             "regular quantization will be applied."
+        ),
+    )
+    parser.add_argument(
+        "--auto_quantize_method",
+        type=str,
+        default="gradient",
+        choices=["gradient", "kl_div"],
+        help=(
+            "Method for auto_quantize sensitivity analysis. 'gradient' uses gradient-based method "
+            "(requires labels in dataset). 'kl_div' uses KL divergence between original and "
+            "quantized model outputs (no labels required). Default: 'gradient'"
         ),
     )
     parser.add_argument(
@@ -139,6 +152,7 @@ if __name__ == "__main__":
         {
             "quant_cfg": args.quant_cfg,
             "auto_quantize_bits": args.auto_quantize_bits,
+            "auto_quantize_method": args.auto_quantize_method,
             "calib_batch_size": args.calib_batch_size,
             "calib_size": args.calib_size,
             "compress": args.compress,
