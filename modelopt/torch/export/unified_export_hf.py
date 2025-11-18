@@ -33,7 +33,11 @@ from torch.distributed.fsdp import FSDPModule
 from modelopt.torch.quantization import set_quantizer_by_cfg_context
 from modelopt.torch.quantization.nn import SequentialQuantizer, TensorQuantizer
 from modelopt.torch.quantization.qtensor import NVFP4QTensor
-from modelopt.torch.quantization.utils import fsdp2_aware_weight_update, quantizer_attr_names
+from modelopt.torch.quantization.utils import (
+    fsdp2_aware_weight_update,
+    get_quantizer_state_dict,
+    quantizer_attr_names,
+)
 
 from .convert_hf_config import convert_hf_quant_config_format
 from .layer_utils import (
@@ -74,7 +78,7 @@ from .quant_utils import (
     to_quantized_weight,
 )
 
-__all__ = ["export_hf_checkpoint"]
+__all__ = ["export_hf_bf16_weights_amax", "export_hf_checkpoint"]
 
 
 def _is_enabled_quantizer(quantizer):
@@ -609,3 +613,40 @@ def export_hf_checkpoint(
             " can be saved with torch.save for further inspection."
         )
         raise e
+
+
+def export_hf_bf16_weights_amax(
+    model: nn.Module,
+    export_dir: Path | str = tempfile.gettempdir(),
+):
+    """Exports the torch model weights and amax values separately which can be used for vLLM fakequant serve.
+
+    This function:
+    1. Extracts amax values for calibration
+    2. Deletes all quantizer parameters from state dict to store only weights in original dtype
+    3. Saves model checkpoint (with weights in original dtype) and amax values separately
+
+    Args:
+        model: The quantized model to export
+        export_dir: Directory to save the model and artifacts
+    """
+    export_dir = Path(export_dir)
+    export_dir.mkdir(parents=True, exist_ok=True)
+
+    amax_dict = {
+        name + "._amax": param["_amax"].detach().clone().cpu()
+        for name, param in get_quantizer_state_dict(model).items()
+        if "_amax" in param
+    }
+
+    # remove quantizer from model
+    for name, module in model.named_modules():
+        if is_quantlinear(module):
+            delattr(module, "weight_quantizer")
+            delattr(module, "input_quantizer")
+            delattr(module, "output_quantizer")
+            module.export()
+
+    # Save with model without quantizer parameters
+    model.save_pretrained(export_dir)
+    torch.save(amax_dict, f"{export_dir}/quant_amax.pth")
