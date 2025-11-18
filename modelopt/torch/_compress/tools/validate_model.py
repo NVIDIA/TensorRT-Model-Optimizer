@@ -56,28 +56,6 @@ For example, to collect activations scores for various layers (ffn, layer_norm, 
 that are used for pruning (ffn_hidden_size, embedding_pruning, etc).
 See --activations_log_dir and --activation_hooks_kwargs args arguments.
 
-Usage:
-======
-
-###########################################################
-### For huggingface models (device_map="auto"):
-### Use python (not torchrun) and do not use the flag --pipeline_parallel.
-python -m  scripts.validate_model \
-  --all --the --other --args
-### Example:
-
-MODEL=".../meta-llama/Llama-3.1-8B-Instruct-HF"
-DATASET=".../datasets/diverse_mix/releases/v0.4_mini"
-
-python -m  \
-  scripts.validate_model  \
-  --model_name_or_path=${MODEL}  \
-  --dataset_path ${DATASET}  \
-  --block_size 1024  --eval_samples 32 --seed 42  --shuffle_seed 444  --bos_rate 0.5  --data_column conversation  \
-  --val_dataset_name=__auto__   --micro_batch_size 1   \
-  2>&1 | tee -a "${MODEL}/validate_model_outputs.txt"
-
-
 """
 
 
