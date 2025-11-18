@@ -65,6 +65,7 @@ def evaluate(
     batch_size=1,
     num_examples=None,
     device="cuda",
+    dataset_path="ILSVRC/imagenet-1k",
 ):
     """Evaluate a model for the given dataset.
 
@@ -74,15 +75,15 @@ def evaluate(
         evaluation_type: Type of evaluation to perform. Currently only accuracy is supported.
         batch_size: Batch size to use for evaluation. Currently only batch_size=1 is supported.
         num_examples: Number of examples to evaluate on. If None, evaluate on the entire dataset.
-        device: Device to run evaluation on. Defaults to "cuda".
-
+        device: Device to run evaluation on. Supported devices: "cpu" and "cuda". Defaults to "cuda".
+        dataset_path: HF dataset card or local path to the imagenet dataset. Defaults to "ILSVRC/imagenet-1k".
     Returns:
         The evaluation result.
     """
 
     # Load imagenet-1k from Hugging Face
     dataset = load_dataset(
-        "ILSVRC/imagenet-1k",
+        dataset_path,
         split="validation",
         data_files={
             "validation": "data/validation*",
@@ -117,7 +118,7 @@ def evaluate_accuracy(
             example of usage `top1, top5 = evaluate_accuracy(..., topk=(1,5))`
             `top1, top5, top10 = evaluate_accuracy(..., topk=(1,5,10))`
         random_seed: Random seed to use for evaluation.
-        device: Device to run evaluation on. Defaults to "cuda".
+        device: Device to run evaluation on. Supported devices: "cpu" and "cuda". Defaults to "cuda".
 
     Returns:
         The accuracy of the model on the validation dataset.

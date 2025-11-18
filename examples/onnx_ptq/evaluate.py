@@ -46,6 +46,12 @@ def main():
         help="Path to the TensorRT timing cache",
     )
     parser.add_argument(
+        "--imagenet_path",
+        type=str,
+        default="ILSVRC/imagenet-1k",
+        help="HF dataset card or local path to the ImageNet dataset",
+    )
+    parser.add_argument(
         "--model_name",
         type=str,
         default=None,
@@ -94,7 +100,11 @@ def main():
         transforms = timm.data.create_transform(**data_config, is_training=False)
 
         top1_accuracy, top5_accuracy = evaluate(
-            device_model, transforms, batch_size=args.batch_size, num_examples=args.eval_data_size
+            device_model,
+            transforms,
+            batch_size=args.batch_size,
+            num_examples=args.eval_data_size,
+            dataset_path=args.imagenet_path,
         )
         print(f"The top1 accuracy of the model is {top1_accuracy}%")
         print(f"The top5 accuracy of the model is {top5_accuracy}%")

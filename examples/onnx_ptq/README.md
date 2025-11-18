@@ -116,6 +116,7 @@ The evaluation script automatically downloads and uses the [ILSVRC/imagenet-1k](
 ```bash
 python evaluate.py \
     --onnx_path=<path to classification model> \
+    --imagenet_path=<HF dataset card or local path to the ImageNet dataset> \
     --engine_precision=stronglyTyped \
     --model_name=vit_base_patch16_224
 ```
@@ -160,6 +161,7 @@ If the input model is of type image classification, use the following script to 
 ```bash
 python evaluate.py \
     --onnx_path=<path to the exported ONNX model> \
+    --imagenet_path=<HF dataset card or local path to the ImageNet dataset> \
     --engine_precision=stronglyTyped \
     --model_name=vit_base_patch16_224
 ```
