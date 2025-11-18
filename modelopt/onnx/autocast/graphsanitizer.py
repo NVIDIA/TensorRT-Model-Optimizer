@@ -18,6 +18,7 @@
 import numpy as np
 import onnx
 import onnx_graphsurgeon as gs
+import onnxscript
 from onnx import helper, numpy_helper
 
 import modelopt.onnx.autocast.utils as utils
@@ -144,6 +145,7 @@ class GraphSanitizer:
         """Convert the model to the given opset version.
 
         The method checks all opset imports and converts the model if any are below the minimum version.
+        Uses onnxscript for conversion when available, which handles large models (>2GB) better.
         """
         # Check all opset imports
         default_opsets = list(self.model.opset_import)
@@ -163,10 +165,30 @@ class GraphSanitizer:
         if any(op.version < self.min_opset for op in default_opsets):
             invalid_opsets = [op.version for op in default_opsets if op.version < self.min_opset]
             try:
-                self.model = onnx.version_converter.convert_version(self.model, self.min_opset)
+                logger.info(
+                    f"Converting model from opset {invalid_opsets} to {self.min_opset} using onnxscript..."
+                )
+
+                # Convert to onnxscript IR
+                model_ir = onnxscript.ir.serde.deserialize_model(self.model)
+
+                # onnxscript handles conversion of large models better than the standard ONNX version_converter
+                # Convert opset with fallback=True (automatically falls back to C API if needed)
+                onnxscript.version_converter.convert_version(
+                    model_ir, target_version=self.min_opset, fallback=True
+                )
+
+                # Convert back to ONNX proto
+                self.model = onnxscript.ir.serde.serialize_model(model_ir)
+                logger.info(f"Successfully converted model to opset {self.min_opset}")
             except Exception as e:
                 logger.warning(f"Failed to convert model to opset {self.min_opset}: {e!s}")
                 logger.warning(f"Attempting to continue with the original opsets: {invalid_opsets}")
+        else:
+            logger.debug(
+                f"No opset conversion needed. Current opset {[op.version for op in default_opsets]} >= min_opset "
+                "{self.min_opset}"
+            )
 
     def set_ir_version(self, max_ir_version: int | None) -> None:
         """Set the model's IR version to the maximum supported version.
