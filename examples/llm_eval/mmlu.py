@@ -224,6 +224,7 @@ def main(
     ntrain: int = 5,
     quant_cfg: str | None = None,
     auto_quantize_bits: float | None = None,
+    auto_quantize_method: str = "gradient",
     batch_size: int = 0,
     calib_size: int = 512,
     dtype: str = "bfloat16",
@@ -281,6 +282,7 @@ def main(
                     batch_size=batch_size,
                     calib_size=calib_size,
                     auto_quantize_bits=auto_quantize_bits,
+                    auto_quantize_method=auto_quantize_method,
                 )
 
     for subject in tqdm(subjects):
