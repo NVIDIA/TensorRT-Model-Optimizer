@@ -59,7 +59,8 @@ class MseCalibrator(_Calibrator):
         self._stop_multiplier = stop_multiplier
         self._quant_func = quant_func
         self._error_func = error_func
-        self._losses = [[] for _ in range(num_steps)]
+        self._losses_sum = [None] * num_steps
+        self._losses_count = [0] * num_steps
         self._candidate_amaxs = [None] * num_steps
 
         self._amax = None
@@ -103,11 +104,16 @@ class MseCalibrator(_Calibrator):
             if self._candidate_amaxs[step] is None:
                 self._candidate_amaxs[step] = candidate_amax
 
-            self._losses[step].append(loss)
+            if self._losses_sum[step] is None:
+                self._losses_sum[step] = loss.clone()
+            else:
+                self._losses_sum[step] += loss
+            self._losses_count[step] += 1
 
     def reset(self):
         """Reset the stored losses and amax value."""
-        self._losses = [[] for _ in range(self._num_steps)]
+        self._losses_sum = [None] * self._num_steps
+        self._losses_count = [0] * self._num_steps
         self._candidate_amaxs = [None] * self._num_steps
         self._amax = None
 
@@ -118,24 +124,27 @@ class MseCalibrator(_Calibrator):
         Args:
             verbose: If True, print the ratio of best_amax to initial_amax.
         """
-        if not any(self._losses):
+        if not any(loss_sum is not None for loss_sum in self._losses_sum):
             return None
 
         # Check if this is per-tensor or per-channel based on the first loss
-        first_step_losses = self._losses[0]
-        if not first_step_losses:
+        first_loss_sum = None
+        for loss_sum in self._losses_sum:
+            if loss_sum is not None:
+                first_loss_sum = loss_sum
+                break
+
+        if first_loss_sum is None:
             return None
 
-        first_loss = first_step_losses[0]
-
-        if first_loss.ndim == 0:
+        if first_loss_sum.ndim == 0:
             avg_losses = []
-            for step_losses in self._losses:
-                if step_losses:
-                    avg_loss = torch.stack(step_losses).mean()
+            for step in range(self._num_steps):
+                if self._losses_sum[step] is not None and self._losses_count[step] > 0:
+                    avg_loss = self._losses_sum[step] / self._losses_count[step]
                     avg_losses.append(avg_loss)
                 else:
-                    avg_losses.append(torch.tensor(float("inf"), device=first_loss.device))
+                    avg_losses.append(torch.tensor(float("inf"), device=first_loss_sum.device))
 
             avg_losses = torch.stack(avg_losses)
             best_step = torch.argmin(avg_losses).item()
@@ -149,13 +158,13 @@ class MseCalibrator(_Calibrator):
             # Per-channel case: loss is a tensor with shape (num_channels,)
             # Compute average losses for each step: [num_steps, num_channels]
             avg_losses_per_step = []
-            for step_losses in self._losses:
-                if step_losses:
-                    avg_loss = torch.stack(step_losses).mean(dim=0)
+            for step in range(self._num_steps):
+                if self._losses_sum[step] is not None and self._losses_count[step] > 0:
+                    avg_loss = self._losses_sum[step] / self._losses_count[step]
                     avg_losses_per_step.append(avg_loss)
                 else:
                     # No data for this step, use inf
-                    avg_losses_per_step.append(torch.full_like(first_loss, float("inf")))
+                    avg_losses_per_step.append(torch.full_like(first_loss_sum, float("inf")))
 
             # Stack to get [num_steps, num_channels]
             avg_losses_per_step = torch.stack(avg_losses_per_step)
