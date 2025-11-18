@@ -64,6 +64,7 @@ def evaluate(
     evaluation_type: str = ACCURACY,
     batch_size=1,
     num_examples=None,
+    device="cuda",
 ):
     """Evaluate a model for the given dataset.
 
@@ -73,6 +74,7 @@ def evaluate(
         evaluation_type: Type of evaluation to perform. Currently only accuracy is supported.
         batch_size: Batch size to use for evaluation. Currently only batch_size=1 is supported.
         num_examples: Number of examples to evaluate on. If None, evaluate on the entire dataset.
+        device: Device to run evaluation on. Defaults to "cuda".
 
     Returns:
         The evaluation result.
@@ -94,12 +96,16 @@ def evaluate(
 
     # TODO: Add support for segmentation tasks.
     if evaluation_type == ACCURACY:
-        return evaluate_accuracy(model, val_loader, num_examples, batch_size, topk=(1, 5))
+        return evaluate_accuracy(
+            model, val_loader, num_examples, batch_size, topk=(1, 5), device=device
+        )
     else:
         raise ValueError(f"Unsupported evaluation type: {evaluation_type}")
 
 
-def evaluate_accuracy(model, val_loader, num_examples, batch_size, topk=(1,), random_seed=None):
+def evaluate_accuracy(
+    model, val_loader, num_examples, batch_size, topk=(1,), random_seed=None, device="cuda"
+):
     """Evaluate the accuracy of the model on the validation dataset.
 
     Args:
@@ -111,6 +117,7 @@ def evaluate_accuracy(model, val_loader, num_examples, batch_size, topk=(1,), ra
             example of usage `top1, top5 = evaluate_accuracy(..., topk=(1,5))`
             `top1, top5, top10 = evaluate_accuracy(..., topk=(1,5,10))`
         random_seed: Random seed to use for evaluation.
+        device: Device to run evaluation on. Defaults to "cuda".
 
     Returns:
         The accuracy of the model on the validation dataset.
@@ -125,6 +132,7 @@ def evaluate_accuracy(model, val_loader, num_examples, batch_size, topk=(1,), ra
 
     if isinstance(model, torch.nn.Module):
         model.eval()
+        model = model.to(device)
     total = 0
     corrects = [0] * len(topk)
     for _, (inputs, labels) in tqdm(
@@ -137,6 +145,8 @@ def evaluate_accuracy(model, val_loader, num_examples, batch_size, topk=(1,), ra
         # Forward pass
         if not isinstance(model, torch.nn.Module):
             inputs = [inputs]
+        else:
+            inputs = inputs.to(device)
         outputs = model(inputs)
 
         # Calculate accuracy
