@@ -35,7 +35,7 @@ from modelopt.torch.opt.hparam import CustomHPType, Hparam, HPType
 from modelopt.torch.opt.searcher import LPS, BaseSearcher, SearchConfig, SearchStateDict
 from modelopt.torch.opt.utils import get_hparam, named_hparams
 from modelopt.torch.utils import create_param_grad_clear_hook, print_rank_0, report_memory
-from modelopt.torch.utils.distributed import DistributedProcessGroup, is_master
+from modelopt.torch.utils.distributed import DistributedProcessGroup, ParallelState, is_master
 
 from . import config as mtq_config
 from . import model_calib
@@ -1010,8 +1010,231 @@ class AutoQuantizeGradientSearcher(_AutoQuantizeBaseSearcher):
         return best_recipes, is_satisfied
 
 
-class AutoQuantizeLossSearcher(_AutoQuantizeBaseSearcher):
-    """A searcher for AutoQuantize algorithm that uses loss based score estimation."""
+# TODO: Enable torch compile for this function
+# Currently modelopt.onnx is breaking this
+def _get_softmax_dist(
+    logits: torch.Tensor, tp_group, return_log_prob: bool = False
+) -> torch.Tensor:
+    # TODO: test this
+    dtype = logits.dtype
+    max_logits = torch.amax(logits, dim=-1, keepdim=True)
+    torch.distributed.all_reduce(max_logits, op=torch.distributed.ReduceOp.MAX, group=tp_group)
+    logits = (logits - max_logits).float()
+    sum_exp_logits = torch.exp(torch.logsumexp(logits, dim=-1, keepdim=True))
+    torch.distributed.all_reduce(sum_exp_logits, op=torch.distributed.ReduceOp.SUM, group=tp_group)
+    logits = logits - torch.log(sum_exp_logits)
+    if return_log_prob:
+        return logits.to(dtype)
+    else:
+        return torch.exp(logits).to(dtype)
+
+
+def _get_softmax(logits: torch.Tensor, return_log_prob: bool = False) -> torch.Tensor:
+    # TODO: do we need to do log_softmax in float32?
+    # log_softmax is supposed to be numerically stable implementation
+    log_prob = torch.log_softmax(logits.float(), dim=-1)
+    if return_log_prob:
+        return log_prob
+    else:
+        return torch.exp(log_prob)
+
+
+def _get_p_log_q(p: torch.Tensor, log_q: torch.Tensor) -> torch.Tensor:
+    return torch.sum(p * log_q).float()
+
+
+def _get_prob_from_logits(
+    logits: torch.Tensor, return_log_prob: bool = False, lm_head: nn.Module = None
+) -> torch.Tensor:
+    parallel_state: ParallelState | None = (
+        getattr(lm_head, "parallel_state", None) if lm_head is not None else None
+    )
+    if parallel_state is not None and parallel_state.tensor_parallel_group.is_initialized():
+        return _get_softmax_dist(
+            logits, parallel_state.tensor_parallel_group.group, return_log_prob
+        )
+    return _get_softmax(logits, return_log_prob)
+
+
+def _get_kl_div_loss(
+    prob_unquant: torch.Tensor, logits_quant: torch.Tensor, lm_head: nn.Module = None
+) -> torch.Tensor:
+    log_prob_quant = _get_prob_from_logits(logits_quant, return_log_prob=True, lm_head=lm_head)
+    # We dont need to calculate the full kl div loss here, just get - p*log_q
+    return -_get_p_log_q(prob_unquant, log_prob_quant)
+
+
+def _get_lm_head(model: nn.Module) -> nn.Module:
+    # HF models do allgather of logits to at lm_head
+    # Hence lm_head outputs are not TP sharded - so we dont need to return the lm_head for TP KLDiv
+    # Loss
+    for name, module in model.named_modules():
+        if name.endswith("output_layer"):  # Megatron models
+            return module
+    return None
+
+
+class AutoQuantizeKLDivSearcher(_AutoQuantizeBaseSearcher):
+    """A searcher for AutoQuantize algorithm that uses KL-Divergence loss based score estimation."""
+
+    @property
+    def default_search_config(self):
+        """Get the default config for the searcher."""
+        config = super().default_search_config
+        config.update(
+            {
+                "forward_step": None,
+            }
+        )
+        return config
+
+    def sanitize_search_config(self, config: SearchConfig | None) -> SearchConfig:
+        """Sanitize the search config dict."""
+        config = config or {}
+        for ignored_key in ["score_func", "loss_func", "forward_backward_step"]:
+            if ignored_key in config:
+                if config[ignored_key] is not None:
+                    warnings.warn(
+                        f"`{ignored_key}` is ignored for KL-Divergence loss based `auto_quantize`."
+                    )
+                config.pop(ignored_key)
+        config = super().sanitize_search_config(config)
+        assert config["forward_step"] is not None, (
+            "`forward_step` must be provided for KL-Divergence loss based `auto_quantize`. "
+            "`forward_step(model, data)` should return model logits."
+        )
+        return config
+
+    @torch.inference_mode()
+    def estimate_sensitivity_scores(self):
+        """Estimate the sensitivity scores for the model.
+
+        Higher score means more sensitive to quantization.
+        """
+
+        def set_to_unquantized():
+            for name, hparam in named_hparams(self.model, unique=True):
+                if not isinstance(hparam, QuantRecipeHparam):
+                    continue
+                if hparam.is_configurable:
+                    hparam.active = QuantRecipe(quant_cfg=None)
+
+        self.model.eval()
+        num_iters = self.config["num_score_steps"]
+        for _, data in tqdm(
+            zip(range(num_iters), self.config["data_loader"]),
+            desc="Estimating KLDivergence loss",
+            total=num_iters,
+        ):
+            set_to_unquantized()
+            logits_unquant = self.config["forward_step"](self.model, data)
+            prob_unquant = _get_prob_from_logits(
+                logits_unquant,
+                return_log_prob=False,
+                lm_head=_get_lm_head(self.model),
+            )
+
+            for name, hparam in tqdm(
+                list(named_hparams(self.model, configurable=True)), desc="Evaluating hparams"
+            ):
+                if not isinstance(hparam, QuantRecipeHparam):
+                    continue
+                for recipe in hparam.choices:
+                    if recipe == QuantRecipe(quant_cfg=None):
+                        continue
+                    hparam.active = recipe
+                    logits_quant = self.config["forward_step"](self.model, data)
+                    score = _get_kl_div_loss(prob_unquant, logits_quant, _get_lm_head(self.model))
+                    if hparam._importance_dict[recipe][hparam.score_modules[0]] is None:
+                        hparam._importance_dict[recipe][hparam.score_modules[0]] = score
+                    else:
+                        hparam._importance_dict[recipe][hparam.score_modules[0]] += score
+                hparam.active = QuantRecipe(quant_cfg=None)
+
+    def run_search_with_stats(self, max_weight_size, verbose=False):
+        """Run threshold-based binary search for KLDivergence loss based auto_quantize.
+
+        We use binary search to minimize the max(per-layer score) while meeting the constraint.
+        """
+        # Collect all sensitivity scores to determine initial threshold bounds
+        all_scores = [
+            score for name in self.candidate_stats for score in self.candidate_stats[name]["scores"]
+        ]
+
+        if not all_scores:
+            warnings.warn("No scores available for threshold-based search!")
+            is_satisfied = False
+            return {}, is_satisfied
+
+        # Initialize binary search bounds
+        min_score = min(all_scores)
+        max_score = max(all_scores)
+        threshold = (min_score + max_score) / 2.0
+        lower_bound = min_score
+        upper_bound = max_score
+
+        # Run for fixed number of iterations
+        max_iterations = 100
+
+        if verbose:
+            print_rank_0("AutoQuantize: Starting threshold-based binary search")
+            print_rank_0(f"  Score range: [{min_score:.6e}, {max_score:.6e}]")
+            print_rank_0(f"  Target weight size: {max_weight_size:.2f}")
+
+        for iteration in range(max_iterations):
+            # Select recipes based on current threshold
+            best_recipes = {}
+            total_weight_size = 0.0
+
+            for name in self.candidate_stats:
+                formats = self.candidate_stats[name]["formats"]
+                scores = self.candidate_stats[name]["scores"]
+                costs = self.candidate_stats[name]["costs"]
+
+                selected_idx = 0
+                for idx in range(len(formats)):
+                    if scores[idx] <= threshold:
+                        selected_idx = idx
+                        break
+
+                best_recipes[name] = {
+                    "format": formats[selected_idx],
+                    "costs": costs[selected_idx],
+                    "scores": scores[selected_idx],
+                }
+                total_weight_size += costs[selected_idx]
+
+            # Check if we meet the constraint
+            meets_constraint = total_weight_size <= max_weight_size
+
+            if verbose:
+                print_rank_0(
+                    f"  Iteration {iteration + 1}: threshold={threshold:.6e}, "
+                    f"weight_size={total_weight_size:.2f}, "
+                    f"meets_constraint={meets_constraint}"
+                )
+
+            # Update binary search bounds
+            if meets_constraint:
+                upper_bound = threshold  # Threshold was too aggressive, relax it
+            else:
+                lower_bound = threshold  # Threshold was too lax, tighten it
+
+            # Update threshold for next iteration
+            threshold = (lower_bound + upper_bound) / 2.0
+
+        # Final check if constraint is satisfied
+        is_satisfied = total_weight_size <= max_weight_size
+
+        if verbose:
+            print_rank_0(
+                f"AutoQuantize: Search complete. "
+                f"Final weight size: {total_weight_size:.2f} "
+                f"(target: {max_weight_size:.2f}), "
+                f"constraint satisfied: {is_satisfied}"
+            )
+
+        return best_recipes, is_satisfied
 
 
 # Backward compatibility alias (defaults to gradient-based searcher)

@@ -66,6 +66,7 @@ def _quantize_model_with_dataset(
     quant_cfg: str | list[str],
     calib_dataset,
     auto_quantize_bits=None,
+    auto_quantize_method="gradient",
     batch_size=1,
     compress=False,
 ):
@@ -81,23 +82,41 @@ def _quantize_model_with_dataset(
             getattr(mtq, quant_fmt) for quant_fmt in quant_cfg if quant_fmt != "NONE"
         ]
 
-        def loss_func(output, data):
-            # For transformers AutoModelForCausalLM models, the outputs are wrapped in `CausalLMOutputWithPast`
-            # which contains the loss attribute.
-            return output.loss
+        # Configure forward_step and loss_func based on method
+        if auto_quantize_method == "gradient":
+            # For gradient-based method, return full output with loss
+            def forward_step(model, batch):
+                return model(**batch)
+
+            def loss_func(output, data):
+                # For transformers AutoModelForCausalLM models, the outputs are wrapped in `CausalLMOutputWithPast`
+                # which contains the loss attribute.
+                return output.loss
+        elif auto_quantize_method == "kl_div":
+            # For KL divergence method, return only logits
+            def forward_step(model, batch):
+                return model(**batch).logits
+
+            loss_func = None  # KL divergence doesn't need a custom loss function
+        else:
+            raise ValueError(
+                f"Invalid auto_quantize_method: {auto_quantize_method}. "
+                "Must be 'gradient' or 'kl_div'"
+            )
 
         net, _ = mtq.auto_quantize(
             net,
             constraints={"effective_bits": auto_quantize_bits},
             quantization_formats=quant_cfg_for_search,
             data_loader=calib_dataset,
-            forward_step=lambda model, batch: model(**batch),
+            forward_step=forward_step,
             loss_func=loss_func,
             num_calib_steps=len(calib_dataset),
             num_score_steps=min(
                 len(calib_dataset), 128 // batch_size
             ),  # Limit the number of score steps to avoid long calibration time
             verbose=True,
+            method=auto_quantize_method,
         )
     else:
         mtq_cfg = CUSTOM_CONFIG.get(quant_cfg)  # type: ignore [arg-type]
@@ -142,6 +161,7 @@ def quantize_model(
     batch_size,
     calib_size,
     auto_quantize_bits=None,
+    auto_quantize_method="gradient",
     data="cnn_dailymail",
     test_generated=True,
     compress=False,
@@ -156,6 +176,7 @@ def quantize_model(
         batch_size: the calibration batch size for each calibration inference run.
         calib_size: the total calibration dataset size.
         auto_quantize_bits: The effective bits constraint for auto_quantize.
+        auto_quantize_method: The method for auto_quantize ('gradient' or 'kl_div').
         data: the name of the calibration dataset.
         test_generated:  If ``True``, test the generated text before and after quantization.
         compress: If ``True``, compress the model after quantization.
@@ -180,13 +201,16 @@ def quantize_model(
         batch_size = get_max_batch_size(net)
         print(f"Update calib batch {batch_size}")
 
+    # Labels are only needed for gradient-based auto_quantize
+    include_labels = auto_quantize_bits is not None and auto_quantize_method == "gradient"
+
     calib_dataloader = get_dataset_dataloader(
         dataset_name=data,
         tokenizer=tokenizer,
         batch_size=batch_size,
         num_samples=calib_size,
         device=device,
-        include_labels=auto_quantize_bits is not None,
+        include_labels=include_labels,
     )
 
     if test_generated:
@@ -194,7 +218,13 @@ def quantize_model(
         generated_str_before_ptq = model.run(input_str)
 
     _quantize_model_with_dataset(
-        model, quant_cfg, calib_dataloader, auto_quantize_bits, batch_size, compress
+        model,
+        quant_cfg,
+        calib_dataloader,
+        auto_quantize_bits,
+        auto_quantize_method,
+        batch_size,
+        compress,
     )
 
     if test_generated:
