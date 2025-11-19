@@ -557,7 +557,7 @@ def _fp4_dequantize(
             "Constant",
             value_t=torch.tensor(scale, dtype=torch_dtype_map["Float"]),
         )
-    return g.op("trt::DequantizeLinear", inputs, scale)
+    return g.op("DequantizeLinear", inputs, scale)
 
 
 def _fp4_dequantize_2(
@@ -568,7 +568,7 @@ def _fp4_dequantize_2(
     axis: int = -1,
 ):
     """Helper Function for Dequantization."""
-    return g.op("trt::DequantizeLinear", inputs, dyn_scale, axis_i=axis, block_size_i=block_size)
+    return g.op("DequantizeLinear", inputs, dyn_scale, axis_i=axis, block_size_i=block_size)
 
 
 def _mxfp8_dynamic_quantize(
