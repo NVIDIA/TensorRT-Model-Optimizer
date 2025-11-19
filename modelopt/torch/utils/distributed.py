@@ -24,9 +24,7 @@ from typing import Any
 
 import torch
 import torch.distributed
-
-# TODO: update this import to from torch.distributed.tensor import DTensor after we deprecate Torch<2.5
-from torch.distributed._tensor import DTensor
+from torch.distributed.tensor import DTensor
 
 __all__ = [
     "DistributedProcessGroup",
