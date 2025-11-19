@@ -253,12 +253,22 @@ def auto_quantize(
     num_score_steps: int = 128,
     verbose: bool = False,
     method: str = "gradient",
+    checkpoint: str | None = None,
 ):
     r"""Perform optimal per-layer quantization by searching for the best quantization formats per-layer.
 
     ``auto_quantize`` uses sensitivity scores to rank the per-layer quantization formats and search
     for the best quantization formats per-layer. The sensitivity score can be computed using gradient-based
     methods (default) or KL divergence loss, controlled by the ``method`` parameter.
+
+    Internally this API runs two main phases:
+
+    #. Calibrate the quantized model exactly like :func:`quantize` would.
+    #. Estimate per-layer sensitivity scores to decide which format to keep.
+
+    The sensitivity scoring phase typically dominates the runtime of ``auto_quantize``, so decreasing the number of
+    samples used for scoring (see ``num_score_steps``) is the recommended way for improving overall auto_quantize time
+    with minimal accuracy impact.
 
     Args:
         model: A pytorch model with quantizer modules.
@@ -377,9 +387,11 @@ def auto_quantize(
                 disabled_layers = "*lm_head*"
                 disabled_layers = ["*lm_head*", "*mlp*"]
 
-        num_calib_steps: Number of batches to use for calibrating the quantized model. Suggested value is 512.
+        num_calib_steps: Number of batches to use for calibrating each candidate quantization format. Suggested value
+            is 512.
         num_score_steps: Number of batches to use for estimating ``auto_quantize`` scores. Suggested value is 128.
-            A higher value could increase the time taken for performing ``auto_quantize``.
+            A higher value could increase the time taken for performing ``auto_quantize``; reducing it speeds up the
+            sensitivity score estimation phase and typically affects accuracy less than lowering ``num_calib_steps``.
         verbose: If True, prints the search progress/intermediate results.
         method: Method to use for estimating sensitivity loss. Higher loss indicates greater sensitivity
             to quantization. Options are:
@@ -388,6 +400,9 @@ def auto_quantize(
             - ``"kl_div"``: Uses KL divergence loss between unquantized and quantized model outputs. Uses
                 threshold-based binary search. Only requires ``forward_step`` (no loss_func needed).
                 The ``forward_step`` should return model logits for this method.
+        checkpoint: (Optional) Path to checkpoint file for saving/restoring auto_quantize search state.
+            If the checkpoint file exists, the search state will be restored from it, skipping the
+            expensive score estimation step.
 
     Returns: A tuple (model, state_dict) where ``model`` is the searched and quantized model and
         ``state_dict`` contains the history and detailed stats of the search procedure.
@@ -474,6 +489,7 @@ def auto_quantize(
         "num_score_steps": num_score_steps,
         "disabled_layers": disabled_layers,
         "verbose": verbose,
+        "checkpoint": checkpoint,
     }
     # Disable all quantizers; AutoQuantize will enable the needed ones
     set_quantizer_by_cfg(model, {"*": {"enable": False}})
