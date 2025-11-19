@@ -96,10 +96,7 @@ class MseCalibrator(_Calibrator):
             else:
                 error = F.mse_loss(x, xq, reduction="none")
 
-            if reduce_axis is None:
-                loss = torch.sum(error)
-            else:
-                loss = quant_utils.reduce_sum(error, axis=reduce_axis, keepdims=False)
+            loss = quant_utils.reduce_sum(error, axis=reduce_axis, keepdims=False)
 
             if self._candidate_amaxs[step] is None:
                 self._candidate_amaxs[step] = candidate_amax
