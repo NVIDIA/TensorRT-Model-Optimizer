@@ -707,7 +707,7 @@ class _DynamicSequentialMLP(DynamicModule):
         self._register_temp_attribute(
             "_activations",
             {
-                "expert_l2_scores": torch.zeros(self.num_local_experts),
+                "expert_l2_scores": [[] for _ in range(self.num_local_experts)],
                 "expert_sample_counts": torch.zeros(self.num_local_experts),
             },
         )
@@ -727,11 +727,11 @@ class _DynamicSequentialMLP(DynamicModule):
             return
 
         # Split output back to per-expert outputs using torch.split
-        tokens_per_expert_list = input[1].tolist()
+        tokens_per_expert_list = input[1].tolist() # list of len 128, [312, 45, .., 8644]
         # use full precision to avoid overflow
-        output_local = output[0].to(torch.float32).detach()
+        output_local = output[0].to(torch.float32).detach() # (8192 x h_dim) 
 
-        output_local_list = torch.split(output_local, tokens_per_expert_list)
+        output_local_list = torch.split(output_local, tokens_per_expert_list) # list of len 128, [(312 x h_dim), (45 x h_dim), .., (8644 x h_dim)]
 
         # Compute L2 norm for each expert's output
         for expert_idx, expert_output in enumerate(output_local_list):
@@ -740,23 +740,14 @@ class _DynamicSequentialMLP(DynamicModule):
                 l2_norm = 0.0
             else:
                 # Compute L2 norm of expert output (router_prob * expert_output)
-                l2_norm = torch.linalg.vector_norm(expert_output, ord=2, dim=-1).sum().item()
+                l2_norm = torch.linalg.vector_norm(expert_output, ord=2, dim=-1).mean().item()
 
-            # Accumulate L2 scores and sample counts
-            self._activations["expert_l2_scores"][expert_idx] += l2_norm
-            self._activations["expert_sample_counts"][expert_idx] += tokens_per_expert_list[
-                expert_idx
-            ]
+            self._activations["expert_l2_scores"][expert_idx].append(l2_norm)
 
     def _estimate_expert_importance(self) -> TracedHp.Importance:
         """Estimate expert importance based on accumulated L2 norms."""
-        assert self._activations["expert_sample_counts"].sum() > 0, (
-            "No activations collected for importance estimation."
-        )
-        # Average L2 scores across samples (avoid division by zero if some experts have no samples)
-        return self._activations["expert_l2_scores"] / (
-            self._activations["expert_sample_counts"] + 1e-8
-        )
+        avg_l2_scores = torch.linalg.vector_norm(torch.tensor(self._activations["expert_l2_scores"]), ord=2, dim=-1)
+        return avg_l2_scores
 
     def export(self) -> torch.nn.Module:
         """Export the dynamic module to a standard SequentialMLP."""
