@@ -233,6 +233,12 @@ def get_pruning_schedule(num_channels, pruning_iters):
 
 class IterativeChannelContributionHook(ActivationsHook):
     def __init__(self, linear_layer: nn.Linear, activation_hooks_kwargs: dict):
+        """TODO: Add docstring.
+
+        Args:
+            linear_layer: The linear projection layer
+            activation_hooks_kwargs: The activation hooks kwargs
+        """
         self.weight_matrix = linear_layer.weight
         self.num_channels = linear_layer.in_features
         self.pruning_iters = activation_hooks_kwargs["validation_full_iters"]
@@ -353,6 +359,12 @@ class IterativeChannelContributionHook(ActivationsHook):
 
 class IndependentKvHeadContributionHook(ActivationsHook):
     def __init__(self, linear_layer: nn.Linear, activation_hooks_kwargs: dict):
+        """TODO: Add docstring.
+
+        Args:
+            linear_layer: The linear projection layer
+            activation_hooks_kwargs: The activation hooks kwargs
+        """
         model_config: DeciLMConfig = activation_hooks_kwargs["model"].config
         block_config: BlockConfig = activation_hooks_kwargs["block_config"]
 
@@ -427,6 +439,12 @@ class IndependentKvHeadContributionHook(ActivationsHook):
 
 class LayerNormlContributionHook(ActivationsHook):
     def __init__(self, layernorm_layer: DeciLMRMSNorm, activation_hooks_kwargs: dict):
+        """Aggregates mean absolute activation values per channel for a layer normalization layer.
+
+        Args:
+            layernorm_layer: The layer normalization layer
+            activation_hooks_kwargs: The activation hooks kwargs (not used)
+        """
         self.agg_embedding_activations = torch.zeros(
             size=(layernorm_layer.weight.shape[0],),
             dtype=torch.float32,
