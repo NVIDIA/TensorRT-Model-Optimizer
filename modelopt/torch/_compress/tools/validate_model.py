@@ -12,7 +12,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-# mypy: ignore-errors
 
 """
 Provides a function to validate a model. Runs a model forward pass on a dataset and calculates
@@ -220,7 +219,7 @@ def validate_model(
             Path(f"{args.model_name_or_path}/validate_model_results.txt").write_text(results_str)
             # TODO: send_slack_message(results_str)
 
-    if args.activations_log_dir is not None:
+    if activation_hooks is not None:
         hook_class.dump_activations_logs(activation_hooks, args.activations_log_dir, args, runtime)
 
     return losses, hidden_states_per_batch
