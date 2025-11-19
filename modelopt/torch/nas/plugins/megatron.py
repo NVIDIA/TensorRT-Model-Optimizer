@@ -732,6 +732,7 @@ class _DynamicSequentialMLP(DynamicModule):
         output_local = output[0].to(torch.float32).detach() # (8192 x h_dim) 
 
         output_local_list = torch.split(output_local, tokens_per_expert_list) # list of len 128, [(312 x h_dim), (45 x h_dim), .., (8644 x h_dim)]
+        probs_split = torch.split(input[2], tokens_per_expert_list)
 
         # Compute L2 norm for each expert's output
         for expert_idx, expert_output in enumerate(output_local_list):
@@ -740,13 +741,19 @@ class _DynamicSequentialMLP(DynamicModule):
                 l2_norm = 0.0
             else:
                 # Compute L2 norm of expert output (router_prob * expert_output)
-                l2_norm = torch.linalg.vector_norm(expert_output, ord=2, dim=-1).mean().item()
+                l2_norm = torch.linalg.vector_norm(expert_output, ord=2, dim=-1) * probs_split[expert_idx]
+                self._activations["expert_l2_scores"][expert_idx].extend(l2_norm.tolist())
 
-            self._activations["expert_l2_scores"][expert_idx].append(l2_norm)
 
     def _estimate_expert_importance(self) -> TracedHp.Importance:
         """Estimate expert importance based on accumulated L2 norms."""
-        avg_l2_scores = torch.linalg.vector_norm(torch.tensor(self._activations["expert_l2_scores"]), ord=2, dim=-1)
+        avg_l2_scores = []
+        for i in range(len(self._activations["expert_l2_scores"])):
+            if self._activations["expert_l2_scores"][i] == []:
+                avg_l2_scores.append(torch.tensor(0.0))
+            else:
+                avg_l2_scores.append(torch.mean(torch.tensor(self._activations["expert_l2_scores"][i])))
+        avg_l2_scores = torch.tensor(avg_l2_scores)
         return avg_l2_scores
 
     def export(self) -> torch.nn.Module:
