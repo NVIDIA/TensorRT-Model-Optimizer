@@ -38,6 +38,8 @@ The script will:
 mp.set_start_method("spawn", force=True)  # Needed for data loader with multiple workers
 
 QUANT_CONFIG_DICT = {
+    "fp8": mtq.FP8_DEFAULT_CFG,
+    "int8": mtq.INT8_DEFAULT_CFG,
     "mxfp8": mtq.MXFP8_DEFAULT_CFG,
     "nvfp4": mtq.NVFP4_DEFAULT_CFG,
     "int4_awq": mtq.INT4_AWQ_CFG,
@@ -104,7 +106,7 @@ def main():
     )
     parser.add_argument(
         "--quantize_mode",
-        choices=["mxfp8", "nvfp4", "int4_awq"],
+        choices=["fp8", "mxfp8", "int8", "nvfp4", "int4_awq"],
         default="mxfp8",
         help="Type of quantization to apply (mxfp8, nvfp4, int4_awq)",
     )
@@ -185,6 +187,10 @@ def main():
             num_examples=args.eval_data_size,
         )
         print(f"Quantized Model - Top-1 Accuracy: {top1:.2f}%, Top-5 Accuracy: {top5:.2f}%")
+
+    if args.quantize_mode in ["fp8", "int8"]:
+        print(f"Exporting to {args.quantize_mode} ONNX model is not supported yet.")
+        return
 
     # Export to ONNX
     export_to_onnx(
