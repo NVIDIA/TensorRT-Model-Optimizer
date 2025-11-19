@@ -1026,7 +1026,8 @@ def fuse_prequant_to_linear(model: torch.nn.Module, fuse_grouped_heads=False):
                         ):
                             warn(
                                 f"Skipping pattern fuse prequant for {type(module).__name__}"
-                                f"pqs dim {pre_quant_scale.numel()} != out_ch dim {linear_fuse_into.weight.shape[-2]}"
+                                f"pre_quant_scale dim {pre_quant_scale.numel()} != "
+                                f"out_channel dim {linear_fuse_into.weight.shape[-2]}"
                             )
                             continue
                         config = module.config
@@ -1035,7 +1036,7 @@ def fuse_prequant_to_linear(model: torch.nn.Module, fuse_grouped_heads=False):
                         n_rep = pre_quant_scale.numel() // num_kv_heads // kv_head_dim
 
                         # Reshape:(num_kv_heads, n_rep, kv_head_dim)
-                        # n_rep is the number of q sharing a kv head
+                        # n_rep is the number of query group
                         averaged_scale = pre_quant_scale.view(
                             num_kv_heads, n_rep, kv_head_dim
                         ).mean(dim=1)
