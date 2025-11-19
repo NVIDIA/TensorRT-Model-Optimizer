@@ -169,12 +169,11 @@ def auto_quantize_model(
     return quantized_model, search_state
 
 
-def get_model_input_shape(model_name, batch_size):
+def get_model_input_shape(model):
     """Get the input shape from timm model configuration."""
-    model = timm.create_model(model_name, pretrained=True, num_classes=1000)
     data_config = timm.data.resolve_model_data_config(model)
     input_size = data_config["input_size"]
-    return (batch_size, *tuple(input_size))  # Add batch dimension
+    return tuple(input_size)
 
 
 def main():
@@ -247,12 +246,13 @@ def main():
 
     args = parser.parse_args()
 
-    # Get input shape from model config
-    input_shape = get_model_input_shape(args.timm_model_name, args.batch_size)
-
     # Create model and move to appropriate device
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = timm.create_model(args.timm_model_name, pretrained=True, num_classes=1000).to(device)
+
+    # Get input shape from model config
+    input_size = get_model_input_shape(model)
+    input_shape = (args.batch_size, *input_size)
 
     # Evaluate base model if requested
     if args.evaluate:
@@ -264,14 +264,13 @@ def main():
         )
         print(f"Base Model - Top-1 Accuracy: {top1:.2f}%, Top-5 Accuracy: {top5:.2f}%")
 
-
     # Quantize model based on mode
     if args.quantize_mode == "auto":
         # Auto quantization requires labels for loss computation
         data_loader = load_calibration_data(
             args.timm_model_name,
             args.calibration_data_size,
-            input_shape[0],  # batch size
+            args.batch_size,
             device,
             with_labels=True,
         )
@@ -285,19 +284,18 @@ def main():
             args.num_score_steps,
         )
     else:
-        # Standard quantization
+        # Standard quantization - only load calibration data if needed
         config = QUANT_CONFIG_DICT[args.quantize_mode]
-        data_loader = (
-            None
-            if args.quantize_mode == "mxfp8"
-            else load_calibration_data(
+        if args.quantize_mode == "mxfp8":
+            data_loader = None
+        else:
+            data_loader = load_calibration_data(
                 args.timm_model_name,
                 args.calibration_data_size,
-                input_shape[0],  # batch size
+                args.batch_size,
                 device,
                 with_labels=False,
             )
-        )
 
         quantized_model = quantize_model(model, config, data_loader)
 
@@ -319,7 +317,9 @@ def main():
         print(f"Quantized Model - Top-1 Accuracy: {top1:.2f}%, Top-5 Accuracy: {top5:.2f}%")
 
     if args.quantize_mode in ["fp8", "int8", "auto"]:
-        print(f"The selected quantization mode {args.quantize_mode} is not supported for ONNX export yet.")
+        print(
+            f"The selected quantization mode {args.quantize_mode} is not supported for ONNX export yet."
+        )
         return
 
     # Export to ONNX
