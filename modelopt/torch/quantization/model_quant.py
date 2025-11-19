@@ -253,6 +253,7 @@ def auto_quantize(
     num_score_steps: int = 128,
     verbose: bool = False,
     method: str = "gradient",
+    checkpoint: str | None = None,
 ):
     r"""Perform optimal per-layer quantization by searching for the best quantization formats per-layer.
 
@@ -388,6 +389,9 @@ def auto_quantize(
             - ``"kl_div"``: Uses KL divergence loss between unquantized and quantized model outputs. Uses
                 threshold-based binary search. Only requires ``forward_step`` (no loss_func needed).
                 The ``forward_step`` should return model logits for this method.
+        checkpoint: (Optional) Path to checkpoint file for saving/restoring auto_quantize search state.
+            If the checkpoint file exists, the search state will be restored from it, skipping the
+            expensive score estimation step.
 
     Returns: A tuple (model, state_dict) where ``model`` is the searched and quantized model and
         ``state_dict`` contains the history and detailed stats of the search procedure.
@@ -474,6 +478,7 @@ def auto_quantize(
         "num_score_steps": num_score_steps,
         "disabled_layers": disabled_layers,
         "verbose": verbose,
+        "checkpoint": checkpoint,
     }
     # Disable all quantizers; AutoQuantize will enable the needed ones
     set_quantizer_by_cfg(model, {"*": {"enable": False}})
