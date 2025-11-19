@@ -25,6 +25,7 @@ import megatron.core.transformer.mlp as megatron_mlp
 import megatron.core.transformer.moe.experts as megatron_moe
 import megatron.core.transformer.moe.moe_layer as megatron_moe_layer
 import torch
+from megatron.core.dist_checkpointing.mapping import ShardedTensor
 from megatron.core.parallel_state import get_data_parallel_group
 from megatron.core.tensor_parallel.mappings import gather_from_sequence_parallel_region
 from megatron.core.transformer import MegatronModule
@@ -562,6 +563,35 @@ if HAS_TE:
         def _process_quantizer_amax(self, k, v, quantizer_state_dict):
             assert v.numel() == 1, "TEGroupedLinear only supports per-tensor quantization"
             quantizer_state_dict[k] = v.view(-1)
+
+        def sharded_state_dict(self, prefix="", sharded_offsets=(), metadata=None):
+            """Override to handle expert parallelism for quantizer states.
+
+            For scalar quantizer states (_amax), make_sharded_tensors_for_checkpoint
+            creates replica_id with ETP information but not EP information. We augment
+            the TP component by adding ep_rank to create unique replica_id values for
+            each (ETP, EP) combination, which is required when EP > 1.
+            """
+            sharded_state_dict = super().sharded_state_dict(prefix, sharded_offsets, metadata)
+
+            for k, sh_ten in sharded_state_dict.items():
+                if isinstance(sh_ten, ShardedTensor) and k.startswith(prefix) and "_quantizer" in k:
+                    replica_id_tuple = sh_ten.replica_id
+                    assert len(replica_id_tuple) == 3, (
+                        f"Expected replica_id for {k} to be in (PP, TP, DP) format, got: {replica_id_tuple}"
+                    )
+
+                    # For scalar quantizer states (_amax), augment the TP component with ep_rank.
+                    # replica_id_tuple[1] comes from make_sharded_tensors_for_checkpoint and
+                    # represents the ETP rank. Adding ep_rank creates a unique combined TP rank
+                    # for each (ETP, EP) combination, ensuring unique replica_id values when EP > 1.
+                    ep_rank = mcore_parallel.get_expert_model_parallel_rank()
+                    edp_rank = mcore_parallel.get_expert_data_parallel_rank()
+
+                    combined_tp_rank = replica_id_tuple[1] + ep_rank
+                    sh_ten.replica_id = (replica_id_tuple[0], combined_tp_rank, edp_rank)
+
+            return sharded_state_dict
 
     @QuantModuleRegistry.register(
         {TEColumnParallelGroupedLinear: "megatron_TEColumnParallelGroupedLinear"}
