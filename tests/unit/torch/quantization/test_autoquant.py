@@ -183,7 +183,7 @@ def test_auto_quantize(model_cls, search_formats, min_bits, search_bits, method)
     assert torch.allclose(output_ref, output_test)
 
 
-def test_auto_quantize_disable():
+def test_auto_quantize_disable_layers():
     model = TransformerBlock()
 
     def loss_func(output):
@@ -342,3 +342,58 @@ def test_estimate_quant_compression():
 
     fp8_affine_kv_cfg = mtq.config.QuantizeConfig(**mtq.FP8_AFFINE_KV_CFG)
     assert estimate_quant_compression(fp8_affine_kv_cfg) == 0.5
+
+
+@pytest.mark.parametrize("method", ["gradient", "kl_div"])
+def test_auto_quantize_checkpoint_resume(method, tmp_path, capsys):
+    """Test that checkpoint can be used to resume an interrupted search."""
+    model = SimpleLinear()
+    checkpoint_path = str(tmp_path / "autoquant_resume_checkpoint.pth")
+
+    # First run: save checkpoint
+    model_1, state_dict_1 = mtq.auto_quantize(
+        model,
+        constraints={"effective_bits": 6.0},
+        quantization_formats=[mtq.INT4_BLOCKWISE_WEIGHT_ONLY_CFG, mtq.INT8_DEFAULT_CFG],
+        data_loader=[model.get_input() for _ in range(2)],
+        forward_step=lambda model, batch: model(batch),
+        loss_func=lambda output, data: output.sum(),
+        num_calib_steps=2,
+        num_score_steps=2,
+        verbose=True,
+        method=method,
+        checkpoint=checkpoint_path,
+    )
+
+    # Clear captured output from first run
+    capsys.readouterr()
+
+    # Second run: resume with same constraint should produce same results
+    model_2 = SimpleLinear()
+    model_2, state_dict_2 = mtq.auto_quantize(
+        model_2,
+        constraints={"effective_bits": 6.0},  # Same constraint
+        quantization_formats=[mtq.INT4_BLOCKWISE_WEIGHT_ONLY_CFG, mtq.INT8_DEFAULT_CFG],
+        data_loader=[model_2.get_input() for _ in range(2)],
+        forward_step=lambda model, batch: model(batch),
+        loss_func=lambda output, data: output.sum(),
+        num_calib_steps=2,
+        num_score_steps=2,
+        verbose=True,
+        method=method,
+        checkpoint=checkpoint_path,
+    )
+
+    # Verify the restore message was printed on second run
+    captured = capsys.readouterr()
+    assert "Restored from checkpoint, skipping scoring" in captured.out, (
+        "Expected restore message when resuming from checkpoint"
+    )
+
+    # Results should be identical when using same constraint
+    assert state_dict_1["candidate_stats"] == state_dict_2["candidate_stats"]
+    assert state_dict_1["best"]["recipe"] == state_dict_2["best"]["recipe"]
+    assert (
+        pytest.approx(state_dict_1["best"]["constraints"]["effective_bits"])
+        == state_dict_2["best"]["constraints"]["effective_bits"]
+    )

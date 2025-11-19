@@ -364,7 +364,6 @@ class _AutoQuantizeBaseSearcher(BaseSearcher, ABC):
         return {
             "candidate_stats": defaultdict(dict),
             "best": {"recipe": {}, "constraints": {}, "score": float("inf"), "is_satisfied": False},
-            "constraints": {},
         }
 
     def sanitize_search_config(self, config: SearchConfig | None) -> SearchConfig:
@@ -401,13 +400,14 @@ class _AutoQuantizeBaseSearcher(BaseSearcher, ABC):
 
         Args:
             name: Module name
-            rule: Either a regex pattern string or a callable that returns a unique key
+            rule: Either a regex pattern string or a callable that returns a unique key;
+                If callable, it should take the model and the name as input and return the unique key
 
         Returns:
             The group key if the rule matches, None otherwise
         """
         if callable(rule):
-            return rule(name)
+            return rule(self.model, name)
         else:
             # Regex pattern
             pattern = re.compile(rule)
@@ -421,13 +421,14 @@ class _AutoQuantizeBaseSearcher(BaseSearcher, ABC):
 
         Args:
             name: Module name
-            rule: Either a regex pattern string or a callable that returns the score module name
+            rule: Either a regex pattern string or a callable that returns the score module name.
+                If callable, it should take the model and the name as input and return the score module name
 
         Returns:
             The score module name if the rule matches, None otherwise
         """
         if callable(rule):
-            return rule(name)
+            return rule(self.model, name)
         else:
             # Regex pattern - return the matched name or full match
             pattern = re.compile(rule)
@@ -546,6 +547,29 @@ class _AutoQuantizeBaseSearcher(BaseSearcher, ABC):
     def estimate_sensitivity_scores(self) -> None:
         """Estimate sensitivity scores and track them with Hparam."""
 
+    def initialize_candidate_stats(self):
+        """Initialize the candidate stats for the model."""
+        for name, hparam in named_hparams(self.model, unique=True):
+            if not isinstance(hparam, QuantRecipeHparam):
+                continue
+
+            formats, scores, costs = [], [], []
+            prev_score = float("inf")
+            for recipe in hparam.choices:
+                formats.append(recipe)
+
+                score = hparam.get_score(recipe)  # type: ignore [arg-type]
+                cost = hparam.get_cost(recipe)  # type: ignore [arg-type]
+
+                score = min(score, prev_score)  # TODO: Should we get rid of this?
+                scores.append(score)
+                costs.append(cost)
+                prev_score = score
+
+            self.candidate_stats[name]["formats"] = formats
+            self.candidate_stats[name]["scores"] = scores
+            self.candidate_stats[name]["costs"] = costs
+
     def _run_func(self, func, num_iters=1, desc=""):
         for i, data in tqdm(
             zip(range(num_iters), self.config["data_loader"]),
@@ -604,7 +628,15 @@ class _AutoQuantizeBaseSearcher(BaseSearcher, ABC):
             # TODO: This is a hack. We need to create a mode for auto_quantize to handle this in a clean way.
             ModeloptStateManager(self.model).state_dict().pop()
 
+        if self.candidate_stats:
+            if self.config["verbose"]:
+                print_rank_0("AutoQuantize: Restored from checkpoint, skipping scoring")
+            return
+
         self.estimate_sensitivity_scores()
+        self.initialize_candidate_stats()
+        # Save checkpoint after successful score estimation
+        self.save_search_checkpoint(verbose=self.config["verbose"])
 
     @staticmethod
     def _get_total_weight_size(modules):
@@ -641,27 +673,6 @@ class _AutoQuantizeBaseSearcher(BaseSearcher, ABC):
         compression = self._get_formatted_weight_compression_constraint()
         total_weight_size = self._get_total_weight_size(self.model.modules())
         max_weight_size = total_weight_size * compression
-
-        for name, hparam in named_hparams(self.model, unique=True):
-            if not isinstance(hparam, QuantRecipeHparam):
-                continue
-
-            formats, scores, costs = [], [], []
-            prev_score = float("inf")
-            for recipe in hparam.choices:
-                formats.append(recipe)
-
-                score = hparam.get_score(recipe)  # type: ignore [arg-type]
-                cost = hparam.get_cost(recipe)  # type: ignore [arg-type]
-
-                score = min(score, prev_score)  # TODO: Should we get rid of this?
-                scores.append(score)
-                costs.append(cost)
-                prev_score = score
-
-            self.candidate_stats[name]["formats"] = formats
-            self.candidate_stats[name]["scores"] = scores
-            self.candidate_stats[name]["costs"] = costs
 
         # Run the search with stats to get the best recipe and whether the constraints are satisfied
         best_recipe_info, is_satisfied = self.run_search_with_stats(max_weight_size, verbose)
@@ -813,6 +824,7 @@ class AutoQuantizeGradientSearcher(_AutoQuantizeBaseSearcher):
                 raise RuntimeError(
                     "AutoQuantize: Error while calling `backward()` on the loss returned by `loss_func`. "
                     "Please fix this!"
+                    f"error: {e}"
                 ) from e
 
         return forward_backward_step

@@ -67,8 +67,10 @@ def _quantize_model_with_dataset(
     calib_dataset,
     auto_quantize_bits=None,
     auto_quantize_method="gradient",
+    auto_quantize_score_size=128,
     batch_size=1,
     compress=False,
+    auto_quantize_checkpoint=None,
 ):
     if hasattr(lm, "gpt2"):
         net = lm.gpt2
@@ -112,11 +114,12 @@ def _quantize_model_with_dataset(
             forward_step=forward_step,
             loss_func=loss_func,
             num_calib_steps=len(calib_dataset),
-            num_score_steps=min(
-                len(calib_dataset), 128 // batch_size
-            ),  # Limit the number of score steps to avoid long calibration time
+            # Most time is spent on score estimation; fewer samples speed it up with little accuracy impact.
+            num_score_steps=min(len(calib_dataset), max(auto_quantize_score_size // batch_size, 1)),
             verbose=True,
             method=auto_quantize_method,
+            # disabled_layers=["*lm_head*", "*mlp.gate.*"],
+            checkpoint=auto_quantize_checkpoint,
         )
     else:
         mtq_cfg = CUSTOM_CONFIG.get(quant_cfg)  # type: ignore [arg-type]
@@ -160,11 +163,13 @@ def quantize_model(
     tokenizer,
     batch_size,
     calib_size,
-    auto_quantize_bits=None,
-    auto_quantize_method="gradient",
     data="cnn_dailymail",
     test_generated=True,
     compress=False,
+    auto_quantize_bits=None,
+    auto_quantize_method="gradient",
+    auto_quantize_score_size=128,
+    auto_quantize_checkpoint=None,
 ):
     """Quantizes the model with the provided calibration dataset.
 
@@ -175,11 +180,14 @@ def quantize_model(
         tokenizer: the tokenizer.
         batch_size: the calibration batch size for each calibration inference run.
         calib_size: the total calibration dataset size.
-        auto_quantize_bits: The effective bits constraint for auto_quantize.
-        auto_quantize_method: The method for auto_quantize ('gradient' or 'kl_div').
         data: the name of the calibration dataset.
         test_generated:  If ``True``, test the generated text before and after quantization.
         compress: If ``True``, compress the model after quantization.
+        auto_quantize_bits: The effective bits constraint for auto_quantize.
+        auto_quantize_method: The method for auto_quantize ('gradient' or 'kl_div').
+        auto_quantize_score_size: Number of samples used for auto_quantize scoring.
+        auto_quantize_checkpoint: Path to checkpoint file for saving/restoring auto_quantize search state
+            (sensitivity scores, costs, etc.). Only used when auto_quantize_bits is specified.
     """
     if "AWQ" in quant_cfg:
         print(
@@ -191,8 +199,10 @@ def quantize_model(
     if hasattr(model, "model"):
         device = model.model.device
 
+    is_gradient_based = auto_quantize_bits is not None and auto_quantize_method == "gradient"
+
     if batch_size == 0:
-        if auto_quantize_bits is not None or torch.distributed.is_initialized():
+        if is_gradient_based or torch.distributed.is_initialized():
             raise ValueError("We dont support automatic batch size inference for this case.")
 
         net = model.gpt2 if hasattr(model, "gpt2") else model.model
@@ -201,16 +211,13 @@ def quantize_model(
         batch_size = get_max_batch_size(net)
         print(f"Update calib batch {batch_size}")
 
-    # Labels are only needed for gradient-based auto_quantize
-    include_labels = auto_quantize_bits is not None and auto_quantize_method == "gradient"
-
     calib_dataloader = get_dataset_dataloader(
         dataset_name=data,
         tokenizer=tokenizer,
         batch_size=batch_size,
         num_samples=calib_size,
         device=device,
-        include_labels=include_labels,
+        include_labels=is_gradient_based,
     )
 
     if test_generated:
@@ -223,8 +230,10 @@ def quantize_model(
         calib_dataloader,
         auto_quantize_bits,
         auto_quantize_method,
+        auto_quantize_score_size,
         batch_size,
         compress,
+        auto_quantize_checkpoint,
     )
 
     if test_generated:
