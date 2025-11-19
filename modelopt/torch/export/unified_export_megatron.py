@@ -537,7 +537,9 @@ class GPTModelExporter:
             and self._hf_config is not None
             and pretrained_model_name_or_path is not None
         ):
-            # Nemotron-H model requires configuration and modeling files to run with vLLM
+            # For models that keep configuration and modeling files as part of the checkpoint,
+            # we need to copy them to the export directory for seamless integration with inference
+            # frameworks.
             hf_checkpoint_path = Path(pretrained_model_name_or_path)
             model_type = getattr(self._hf_config, "model_type", None)
 
