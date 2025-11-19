@@ -21,6 +21,7 @@ import torch
 import torch.multiprocessing as mp
 from datasets import load_dataset
 from download_example_onnx import export_to_onnx
+from evaluation import evaluate
 
 import modelopt.torch.quantization as mtq
 
@@ -37,6 +38,8 @@ The script will:
 mp.set_start_method("spawn", force=True)  # Needed for data loader with multiple workers
 
 QUANT_CONFIG_DICT = {
+    "fp8": mtq.FP8_DEFAULT_CFG,
+    "int8": mtq.INT8_DEFAULT_CFG,
     "mxfp8": mtq.MXFP8_DEFAULT_CFG,
     "nvfp4": mtq.NVFP4_DEFAULT_CFG,
     "int4_awq": mtq.INT4_AWQ_CFG,
@@ -103,7 +106,7 @@ def main():
     )
     parser.add_argument(
         "--quantize_mode",
-        choices=["mxfp8", "nvfp4", "int4_awq"],
+        choices=["fp8", "mxfp8", "int8", "nvfp4", "int4_awq"],
         default="mxfp8",
         help="Type of quantization to apply (mxfp8, nvfp4, int4_awq)",
     )
@@ -125,6 +128,17 @@ def main():
         default=1,
         help="Batch size for calibration and ONNX model export.",
     )
+    parser.add_argument(
+        "--evaluate",
+        action="store_true",
+        help="Evaluate the base and quantized models on ImageNet validation set.",
+    )
+    parser.add_argument(
+        "--eval_data_size",
+        type=int,
+        default=None,
+        help="Number of samples to use for evaluation. If None, use entire validation set.",
+    )
 
     args = parser.parse_args()
 
@@ -134,6 +148,16 @@ def main():
     # Create model and move to appropriate device
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = timm.create_model(args.timm_model_name, pretrained=True, num_classes=1000).to(device)
+
+    # Evaluate base model if requested
+    if args.evaluate:
+        print("\n=== Evaluating Base Model ===")
+        data_config = timm.data.resolve_model_data_config(model)
+        transforms = timm.data.create_transform(**data_config, is_training=False)
+        top1, top5 = evaluate(
+            model, transforms, batch_size=args.batch_size, num_examples=args.eval_data_size
+        )
+        print(f"Base Model - Top-1 Accuracy: {top1:.2f}%, Top-5 Accuracy: {top5:.2f}%")
 
     # Select quantization config
     config = QUANT_CONFIG_DICT[args.quantize_mode]
@@ -150,6 +174,23 @@ def main():
 
     # Quantize model
     quantized_model = quantize_model(model, config, data_loader)
+
+    # Evaluate quantized model if requested
+    if args.evaluate:
+        print("\n=== Evaluating Quantized Model ===")
+        data_config = timm.data.resolve_model_data_config(quantized_model)
+        transforms = timm.data.create_transform(**data_config, is_training=False)
+        top1, top5 = evaluate(
+            quantized_model,
+            transforms,
+            batch_size=args.batch_size,
+            num_examples=args.eval_data_size,
+        )
+        print(f"Quantized Model - Top-1 Accuracy: {top1:.2f}%, Top-5 Accuracy: {top5:.2f}%")
+
+    if args.quantize_mode in ["fp8", "int8"]:
+        print(f"Exporting to {args.quantize_mode} ONNX model is not supported yet.")
+        return
 
     # Export to ONNX
     export_to_onnx(
