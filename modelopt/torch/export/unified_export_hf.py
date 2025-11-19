@@ -78,7 +78,7 @@ from .quant_utils import (
     to_quantized_weight,
 )
 
-__all__ = ["export_hf_bf16_weights_amax", "export_hf_checkpoint"]
+__all__ = ["export_hf_checkpoint"]
 
 
 def _is_enabled_quantizer(quantizer):
@@ -557,11 +557,44 @@ def _export_hf_checkpoint(
     return quantized_state_dict, quant_config
 
 
+def _export_hf_bf16_weights_amax(
+    model: nn.Module,
+) -> tuple[dict[str, torch.Tensor], dict[str, Any]]:
+    """Exports the torch model weights and amax values separately.
+
+    This function:
+    1. Extracts amax values for calibration
+    2. Deletes all quantizer parameters from state dict to store only weights in original dtype
+
+    Args:
+        model: The quantized model to export
+
+    Returns:
+        post_state_dict: Dict containing quantized weights
+        amax_dict: Dict containing amax values
+    """
+    amax_dict = {
+        name + "._amax": param["_amax"].detach().clone().cpu()
+        for name, param in get_quantizer_state_dict(model).items()
+        if "_amax" in param
+    }
+
+    # remove quantizer from model
+    for name, module in model.named_modules():
+        if is_quantlinear(module):
+            delattr(module, "weight_quantizer")
+            delattr(module, "input_quantizer")
+            delattr(module, "output_quantizer")
+            module.export()
+    return model.state_dict(), amax_dict
+
+
 def export_hf_checkpoint(
     model: nn.Module,
     dtype: torch.dtype | None = None,
     export_dir: Path | str = tempfile.gettempdir(),
     save_modelopt_state: bool = False,
+    export_bf16_weights_amax: bool = False,
 ):
     """Exports the torch model to unified checkpoint and saves to export_dir.
 
@@ -583,13 +616,19 @@ def export_hf_checkpoint(
         return
 
     try:
-        post_state_dict, hf_quant_config = _export_hf_checkpoint(model, dtype)
+        if export_bf16_weights_amax:
+            post_state_dict, amax_dict = _export_hf_bf16_weights_amax(model)
+            hf_quant_config = None
+            torch.save(amax_dict, f"{export_dir}/quant_amax.pth")
+        else:
+            post_state_dict, hf_quant_config = _export_hf_checkpoint(model, dtype)
 
-        # Save hf_quant_config.json for backward compatibility
-        with open(f"{export_dir}/hf_quant_config.json", "w") as file:
-            json.dump(hf_quant_config, file, indent=4)
+        if hf_quant_config is not None:
+            # Save hf_quant_config.json for backward compatibility
+            with open(f"{export_dir}/hf_quant_config.json", "w") as file:
+                json.dump(hf_quant_config, file, indent=4)
 
-        hf_quant_config = convert_hf_quant_config_format(hf_quant_config)
+            hf_quant_config = convert_hf_quant_config_format(hf_quant_config)
 
         # Save model
         model.save_pretrained(
@@ -602,7 +641,8 @@ def export_hf_checkpoint(
         with open(original_config) as file:
             config_data = json.load(file)
 
-        config_data["quantization_config"] = hf_quant_config
+        if hf_quant_config is not None:
+            config_data["quantization_config"] = hf_quant_config
 
         with open(original_config, "w") as file:
             json.dump(config_data, file, indent=4)
@@ -613,40 +653,3 @@ def export_hf_checkpoint(
             " can be saved with torch.save for further inspection."
         )
         raise e
-
-
-def export_hf_bf16_weights_amax(
-    model: nn.Module,
-    export_dir: Path | str = tempfile.gettempdir(),
-):
-    """Exports the torch model weights and amax values separately which can be used for vLLM fakequant serve.
-
-    This function:
-    1. Extracts amax values for calibration
-    2. Deletes all quantizer parameters from state dict to store only weights in original dtype
-    3. Saves model checkpoint (with weights in original dtype) and amax values separately
-
-    Args:
-        model: The quantized model to export
-        export_dir: Directory to save the model and artifacts
-    """
-    export_dir = Path(export_dir)
-    export_dir.mkdir(parents=True, exist_ok=True)
-
-    amax_dict = {
-        name + "._amax": param["_amax"].detach().clone().cpu()
-        for name, param in get_quantizer_state_dict(model).items()
-        if "_amax" in param
-    }
-
-    # remove quantizer from model
-    for name, module in model.named_modules():
-        if is_quantlinear(module):
-            delattr(module, "weight_quantizer")
-            delattr(module, "input_quantizer")
-            delattr(module, "output_quantizer")
-            module.export()
-
-    # Save with model without quantizer parameters
-    model.save_pretrained(export_dir)
-    torch.save(amax_dict, f"{export_dir}/quant_amax.pth")

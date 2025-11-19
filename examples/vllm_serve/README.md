@@ -55,15 +55,18 @@ lm_eval --model local-completions --tasks gsm8k --model_args model=<model_name>,
 
 ## Load QAT/PTQ model and serve in vLLM (WIP)
 
-Overwrite the calibrated amax value with prepared values from either PTQ/QAT. This is only tested for Llama3.1
+Overwrite the calibrated amax value with prepared values from either QAT/PTQ.
 
-Step 1: convert amax to merged amax, using llama3.1 as an example:
+Step 1: export the model with bf16 weights and amax values.
 
-```bash
-python convert_amax_hf2vllm.py -i <amax.pth> -o <vllm_amax.pth>
+- For HF model set `export_bf16_weights_amax` to export the model with function `modelopt.torch.export.unified_export_hf.export_hf_checkpoint`.
+- For MCore model use `export_bf16_weights_amax` to export the model with function `modelopt.torch.export.unified_export_megatron.export_mcore_gpt_to_hf`.
+
+Step 2: configure <quant_amax.pth> from exported model using AMAX_FILE_PATH environment variable in step 1. For example:
+
 ```
-
-Step 2: add `<vllm_amax.pth>` to `quant_config` in `vllm_serve_fakequant.py`
+AMAX_FILE_PATH=<vllm_amax.pth> QUANT_CFG=<quant_config> python vllm_serve_fakequant.py <model_path> -tp 8 --host 0.0.0.0 --port 8000
+```
 
 ## Important Notes
 
@@ -85,3 +88,4 @@ torch.distributed.barrier()
 ## Known Problems
 
 1. AWQ is not yet supported in vLLM.
+2. PTQ/QAT checkpoint doesn't work with KV Cache quantization enabled.
