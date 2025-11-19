@@ -726,8 +726,8 @@ class _DynamicEagleGPTModel(EagleModel):
 
         eagle_inputs = {}
 
+        eagle_inputs["input_ids"] = padded_input_ids
         eagle_inputs["hidden_states"] = hidden_states
-
         eagle_inputs["attention_mask"] = set_multi_step_attention_mask(attn_mask, ttt_step)
 
         eagle_inputs["rotary_pos_emb"] = torch.cat(
