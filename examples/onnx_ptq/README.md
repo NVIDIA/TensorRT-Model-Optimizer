@@ -111,7 +111,7 @@ quantize(
 
 ### Evaluate the quantized ONNX model
 
-The evaluation script automatically downloads and uses the [ILSVRC/imagenet-1k](https://huggingface.co/datasets/ILSVRC/imagenet-1k) dataset from Hugging Face. As this is a gated repository, a valid `HF_TOKEN` will be required for accessing the dataset. The quantized ONNX ViT model can be evaluated on the ImageNet dataset as follows:
+The evaluation script automatically downloads and uses the [ILSVRC/imagenet-1k](https://huggingface.co/datasets/ILSVRC/imagenet-1k) dataset from Hugging Face. This gated repository requires authentication via Hugging Face access token. See <https://huggingface.co/docs/hub/en/security-tokens> for details. The quantized ONNX ViT model can be evaluated on the ImageNet dataset as follows:
 
 ```bash
 python evaluate.py \
@@ -154,7 +154,7 @@ python torch_quant_to_onnx.py \
 
 ### Evaluation
 
-If the input model is of type image classification, use the following script to evaluate it. The script automatically downloads and uses the [ILSVRC/imagenet-1k](https://huggingface.co/datasets/ILSVRC/imagenet-1k) dataset from Hugging Face. As this is a gated repository, a valid `HF_TOKEN` will be required for accessing the dataset.
+If the input model is of type image classification, use the following script to evaluate it. The script automatically downloads and uses the [ILSVRC/imagenet-1k](https://huggingface.co/datasets/ILSVRC/imagenet-1k) dataset from Hugging Face. This gated repository requires authentication via Hugging Face access token. See <https://huggingface.co/docs/hub/en/security-tokens> for details.
 
 > *Note: TensorRT 10.11 or later is required to evaluate the MXFP8 or NVFP4 ONNX models.*
 

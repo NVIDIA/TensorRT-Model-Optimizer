@@ -34,6 +34,12 @@ def main():
         [batch_size,3,224,224] and output shape of [1,1000]""",
     )
     parser.add_argument(
+        "--model_name",
+        type=str,
+        required=True,
+        help="use for timm.create_model to load data config",
+    )
+    parser.add_argument(
         "--engine_path",
         type=str,
         default=None,
@@ -50,12 +56,6 @@ def main():
         type=str,
         default="ILSVRC/imagenet-1k",
         help="HF dataset card or local path to the ImageNet dataset",
-    )
-    parser.add_argument(
-        "--model_name",
-        type=str,
-        default=None,
-        help="use for timm.create_model to load data config",
     )
     parser.add_argument("--batch_size", type=int, default=1, help="Batch size for evaluation")
     parser.add_argument(
@@ -94,20 +94,19 @@ def main():
     device_model = DeviceModel(client, compiled_model, metadata={})
 
     top1_accuracy, top5_accuracy = 0.0, 0.0
-    if args.model_name:
-        model = timm.create_model(args.model_name, pretrained=False, num_classes=1000)
-        data_config = timm.data.resolve_model_data_config(model)
-        transforms = timm.data.create_transform(**data_config, is_training=False)
+    model = timm.create_model(args.model_name, pretrained=False, num_classes=1000)
+    data_config = timm.data.resolve_model_data_config(model)
+    transforms = timm.data.create_transform(**data_config, is_training=False)
 
-        top1_accuracy, top5_accuracy = evaluate(
-            device_model,
-            transforms,
-            batch_size=args.batch_size,
-            num_examples=args.eval_data_size,
-            dataset_path=args.imagenet_path,
-        )
-        print(f"The top1 accuracy of the model is {top1_accuracy}%")
-        print(f"The top5 accuracy of the model is {top5_accuracy}%")
+    top1_accuracy, top5_accuracy = evaluate(
+        device_model,
+        transforms,
+        batch_size=args.batch_size,
+        num_examples=args.eval_data_size,
+        dataset_path=args.imagenet_path,
+    )
+    print(f"The top1 accuracy of the model is {top1_accuracy}%")
+    print(f"The top5 accuracy of the model is {top5_accuracy}%")
 
     latency = device_model.get_latency()
     print(f"Inference latency of the model is {latency} ms")
