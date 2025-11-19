@@ -15,7 +15,7 @@ unit:
   timeout: 30m
   variables:
     PYTHON: 12
-    TORCH: 28
+    TORCH: 29
     TRANSFORMERS: latest
   image: python:3.$PYTHON
   before_script:

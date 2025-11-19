@@ -1,24 +1,7 @@
 Model Optimizer Changelog (Linux)
 =================================
-0.41 (2025-12-xx)
-^^^^^^^^^^^^^^^^^
 
-**Deprecations**
-
-**New Features**
-
-- Add support for PyTorch Geometric quantization.
-
-**Documentation**
-
-- Deprecate ``examples/megatron-lm`` in favor of more detailed documentation in `Megatron-LM/examples/post_training/modelopt <https://github.com/NVIDIA/Megatron-LM/tree/main/examples/post_training/modelopt>`_.
-
-**Misc**
-
-- Bump minimum recommended transformers version to 4.53.
-
-
-0.40 (2025-12-xx)
+0.40 (2025-12-11)
 ^^^^^^^^^^^^^^^^^
 
 **Bug Fixes**
@@ -32,7 +15,15 @@ Model Optimizer Changelog (Linux)
 - Add ``specdec_bench`` example to benchmark speculative decoding performance. See `examples/specdec_bench/README.md <https://github.com/NVIDIA/TensorRT-Model-Optimizer/tree/main/examples/specdec_bench#speculative-decoding-benchmark>`_ for more details.
 - Add FP8/NVFP4 KV cache quantization support for Megatron Core models.
 - Add flag ``trt_plugins_precision`` in ONNX autocast to indicate custom ops precision. This is similar to the flag already existing in the quantization workflow.
+- Add support for PyTorch Geometric quantization.
 
+**Documentation**
+
+- Deprecate ``examples/megatron-lm`` in favor of more detailed documentation in `Megatron-LM/examples/post_training/modelopt <https://github.com/NVIDIA/Megatron-LM/tree/main/examples/post_training/modelopt>`_.
+
+**Misc**
+
+- Bump minimum recommended transformers version to 4.53.
 
 0.39 (2025-11-11)
 ^^^^^^^^^^^^^^^^^
@@ -56,6 +47,7 @@ Model Optimizer Changelog (Linux)
 - Enabled native Modelopt quantization support for FP8 and NVFP4 formats in SGLang. See `SGLang quantization documentation <https://github.com/sgl-project/sglang/blob/main/docs/advanced_features/quantization.md#using-nvidia-modelopt>`_ for more details.
 - Added modelopt quantized checkpoints in vLLM/SGLang CI/CD pipelines (PRs are under review).
 - Add support for exporting QLoRA checkpoint fintuned using ModelOpt.
+- Update NVFP4 AWQ checkpoint export. It now fuses scaling factors of o_proj and down_proj layers into the model when possible to facilitate deployment.
 
 **Documentation**
 

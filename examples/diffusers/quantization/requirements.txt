@@ -1,9 +1,5 @@
 cuda-python
 diffusers
 nvtx
-onnx_graphsurgeon
-onnxruntime
-opencv-python>=4.8.1.78
+opencv-python>=4.8.1.78,<4.12.0.88
 sentencepiece
-torch
-torchvision
