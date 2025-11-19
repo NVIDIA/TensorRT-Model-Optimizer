@@ -60,6 +60,7 @@ from .model_utils import get_language_model_from_vl, is_multimodal_model
 from .plugins import export_spec_ckpt_config, export_spec_ckpt_state_dict, spec_opt_only
 from .quant_utils import (
     fuse_prequant_layernorm,
+    fuse_prequant_to_linear,
     get_activation_scaling_factor,
     get_quant_config,
     get_quantization_format,
@@ -106,6 +107,10 @@ def requantize_resmooth_fused_llm_layers(model: torch.nn.Module):
 
     fused_linears = {}
     module_names = set()
+
+    # Fuse pre_quant_scale to the linear weights if possible
+    if quantization_format is not None and "nvfp4_awq" in quantization_format.lower():
+        fuse_prequant_to_linear(model)
 
     for name, module in model.named_modules():
         module_names.add(name)
