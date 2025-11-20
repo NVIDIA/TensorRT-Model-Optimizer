@@ -437,7 +437,7 @@ class IndependentKvHeadContributionHook(ActivationsHook):
         }
 
 
-class LayerNormlContributionHook(ActivationsHook):
+class LayerNormContributionHook(ActivationsHook):
     def __init__(self, layernorm_layer: DeciLMRMSNorm, activation_hooks_kwargs: dict):
         """Aggregates mean absolute activation values per channel for a layer normalization layer.
 
@@ -458,7 +458,7 @@ class LayerNormlContributionHook(ActivationsHook):
 
     @classmethod
     def dump_activations_logs(
-        cls: type["LayerNormlContributionHook"],
+        cls: type["LayerNormContributionHook"],
         activation_hooks: dict[str, "ActivationsHook"],
         activations_log_dir: Path | str,
         args: argparse.Namespace,
@@ -473,7 +473,7 @@ class LayerNormlContributionHook(ActivationsHook):
 
         rank = runtime.global_rank if runtime is not None else 0
         if rank == 0:
-            LayerNormlContributionHook._save_channel_importance_results(
+            LayerNormContributionHook._save_channel_importance_results(
                 activation_hooks, activations_log_dir, args
             )
 

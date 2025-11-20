@@ -40,7 +40,7 @@ def register_activation_hooks(
         # TODO: maybe this is too generic, and we should have it specifically for
         # input_layernorm and post_attention_layernorm; now it might select qk_norms
         "layernorm": {
-            "layer_norm_contribution": hooks.LayerNormlContributionHook,
+            "layer_norm_contribution": hooks.LayerNormContributionHook,
         },
     }
 
