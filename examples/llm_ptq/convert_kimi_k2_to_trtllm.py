@@ -1,4 +1,19 @@
 #!/usr/bin/env python3
+# SPDX-FileCopyrightText: Copyright (c) 2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """
 Convert Kimi-K2-Thinking compressed-tensors checkpoint to TRT-LLM GPTQ format.
 
@@ -14,9 +29,7 @@ TRT-LLM GPTQ format uses:
 
 import argparse
 import json
-import os
 from pathlib import Path
-from typing import Dict, List
 
 import safetensors
 import safetensors.torch
@@ -80,7 +93,9 @@ def pack_int4_to_int32_gptq(weight_unpacked: torch.Tensor) -> torch.Tensor:
     w_packed_uint8 = (w_uint4[:, 1::2] << 4) | (w_uint4[:, 0::2])
 
     # Reshape to int32
-    w_packed_int32 = w_packed_uint8.view(N, K // 8, 4).view(torch.uint8).view(N, K // 8).view(torch.int32)
+    w_packed_int32 = (
+        w_packed_uint8.view(N, K // 8, 4).view(torch.uint8).view(N, K // 8).view(torch.int32)
+    )
 
     return w_packed_int32.contiguous()
 
@@ -88,9 +103,9 @@ def pack_int4_to_int32_gptq(weight_unpacked: torch.Tensor) -> torch.Tensor:
 def convert_compressed_tensor_to_gptq(
     weight_packed: torch.Tensor,
     weight_scale: torch.Tensor,
-    weight_shape: List[int],
+    weight_shape: list[int],
     group_size: int = 32,
-) -> Dict[str, torch.Tensor]:
+) -> dict[str, torch.Tensor]:
     """
     Convert compressed-tensors format to GPTQ format for TRT-LLM.
 
@@ -127,9 +142,9 @@ def convert_compressed_tensor_to_gptq(
     qzeros = qzeros_uint8.view(torch.int32).contiguous()
 
     return {
-        'qweight': qweight,
-        'scales': scales,
-        'qzeros': qzeros,
+        "qweight": qweight,
+        "scales": scales,
+        "qzeros": qzeros,
     }
 
 
@@ -191,11 +206,11 @@ def convert_checkpoint(
         output_tensors = {}
 
         for key, tensor in tqdm(source_tensors.items(), desc="Converting tensors", leave=False):
-            if key.endswith('.weight_packed'):
+            if key.endswith(".weight_packed"):
                 # This is a quantized weight - convert to GPTQ format
-                base_key = key[:-len('.weight_packed')]
-                scale_key = base_key + '.weight_scale'
-                shape_key = base_key + '.weight_shape'
+                base_key = key[: -len(".weight_packed")]
+                scale_key = base_key + ".weight_scale"
+                shape_key = base_key + ".weight_shape"
 
                 if scale_key in source_tensors and shape_key in source_tensors:
                     weight_shape = source_tensors[shape_key].tolist()
@@ -209,13 +224,13 @@ def convert_checkpoint(
                     )
 
                     # Save with GPTQ naming convention and track in weight_map
-                    qweight_key = base_key + '.qweight'
-                    scales_key = base_key + '.scales'
-                    qzeros_key = base_key + '.qzeros'
+                    qweight_key = base_key + ".qweight"
+                    scales_key = base_key + ".scales"
+                    qzeros_key = base_key + ".qzeros"
 
-                    output_tensors[qweight_key] = gptq_tensors['qweight']
-                    output_tensors[scales_key] = gptq_tensors['scales']
-                    output_tensors[qzeros_key] = gptq_tensors['qzeros']
+                    output_tensors[qweight_key] = gptq_tensors["qweight"]
+                    output_tensors[scales_key] = gptq_tensors["scales"]
+                    output_tensors[qzeros_key] = gptq_tensors["qzeros"]
 
                     new_weight_map[qweight_key] = shard_name
                     new_weight_map[scales_key] = shard_name
@@ -223,7 +238,7 @@ def convert_checkpoint(
                 else:
                     print(f"Warning: Missing scale or shape for {key}")
 
-            elif key.endswith('.weight_scale') or key.endswith('.weight_shape'):
+            elif key.endswith(".weight_scale") or key.endswith(".weight_shape"):
                 # Skip these as they're handled above
                 continue
             else:
@@ -238,22 +253,22 @@ def convert_checkpoint(
     # Copy config.json and update quantization settings
     config_file = input_path / "config.json"
     if config_file.exists():
-        with open(config_file, 'r') as f:
+        with open(config_file) as f:
             config = json.load(f)
 
         # Remove HuggingFace quantization_config if present
-        config.pop('quantization_config', None)
+        config.pop("quantization_config", None)
 
         # Add TRT-LLM native quantization config for GPTQ
-        config['quantization'] = {
-            'quant_algo': 'W4A16_GPTQ',  # TRT-LLM's enum value
-            'group_size': 32,
-            'has_zero_point': True,  # GPTQ uses asymmetric quantization
-            'pre_quant_scale': False,  # No pre-quantization scaling
+        config["quantization"] = {
+            "quant_algo": "W4A16_GPTQ",  # TRT-LLM's enum value
+            "group_size": 32,
+            "has_zero_point": True,  # GPTQ uses asymmetric quantization
+            "pre_quant_scale": False,  # No pre-quantization scaling
         }
 
         output_config_file = output_path / "config.json"
-        with open(output_config_file, 'w') as f:
+        with open(output_config_file, "w") as f:
             json.dump(config, f, indent=2)
         print(f"\nSaved config to {output_config_file}")
 
@@ -261,15 +276,14 @@ def convert_checkpoint(
     index_data = {
         "metadata": {
             "total_size": sum(
-                (output_path / shard_file.name).stat().st_size
-                for shard_file in shard_files
+                (output_path / shard_file.name).stat().st_size for shard_file in shard_files
             )
         },
-        "weight_map": new_weight_map
+        "weight_map": new_weight_map,
     }
 
     index_file = output_path / "model.safetensors.index.json"
-    with open(index_file, 'w') as f:
+    with open(index_file, "w") as f:
         json.dump(index_data, f, indent=2)
     print(f"\nGenerated index file: {index_file}")
     print(f"  Total tensors: {len(new_weight_map)}")
@@ -278,29 +292,35 @@ def convert_checkpoint(
     import shutil
 
     # JSON files (tokenizer and generation config)
-    for file in ['generation_config.json', 'tokenizer.json', 'tokenizer_config.json',
-                 'special_tokens_map.json', 'vocab.json', 'merges.txt']:
+    for file in [
+        "generation_config.json",
+        "tokenizer.json",
+        "tokenizer_config.json",
+        "special_tokens_map.json",
+        "vocab.json",
+        "merges.txt",
+    ]:
         src = input_path / file
         if src.exists():
             shutil.copy(src, output_path / file)
             print(f"Copied: {file}")
 
     # Python files (model architecture, custom tokenizers)
-    for file in ['configuration_deepseek.py', 'modeling_deepseek.py', 'tokenization_kimi.py']:
+    for file in ["configuration_deepseek.py", "modeling_deepseek.py", "tokenization_kimi.py"]:
         src = input_path / file
         if src.exists():
             shutil.copy(src, output_path / file)
             print(f"Copied: {file}")
 
     # Tokenizer model files
-    for file in ['tiktoken.model', 'tokenizer.model', 'sentencepiece.model']:
+    for file in ["tiktoken.model", "tokenizer.model", "sentencepiece.model"]:
         src = input_path / file
         if src.exists():
             shutil.copy(src, output_path / file)
             print(f"Copied: {file}")
 
     # Template files
-    for file in ['chat_template.jinja', 'chat_template.json']:
+    for file in ["chat_template.jinja", "chat_template.json"]:
         src = input_path / file
         if src.exists():
             shutil.copy(src, output_path / file)
@@ -310,7 +330,9 @@ def convert_checkpoint(
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Convert Kimi-K2 checkpoint to TRT-LLM GPTQ format")
+    parser = argparse.ArgumentParser(
+        description="Convert Kimi-K2 checkpoint to TRT-LLM GPTQ format"
+    )
     parser.add_argument(
         "--input-dir",
         type=str,
@@ -347,4 +369,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
