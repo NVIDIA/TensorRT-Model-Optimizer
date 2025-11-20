@@ -26,7 +26,7 @@ import pruning_ckpts
 import score_pruning_activations
 import scoring
 from omegaconf import DictConfig
-from puzzle_tools.runtime import IRuntime
+from modelopt.torch._compress.tools.runtime import IRuntime
 
 from modelopt.torch._compress.tools.hydra_utils import initialize_hydra_config_for_dir
 
