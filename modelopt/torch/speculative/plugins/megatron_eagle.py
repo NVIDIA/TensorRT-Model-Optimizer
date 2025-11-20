@@ -415,7 +415,7 @@ class EagleModule(MegatronModule):
             last_layer = self.decoder.layers[-1]
             last_layer.register_forward_hook(self._eagle3_layer_forward_hook)
 
-            if self.congfig.use_embedding:
+            if self.config.use_embedding:
                 # The first EAGLE3 layer needs to be specialized.
                 layer = self.decoder.layers[0]
                 self_attention = layer.self_attention
