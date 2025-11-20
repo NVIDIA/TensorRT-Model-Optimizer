@@ -786,6 +786,11 @@ def to_quantized_weight(
                 return (weight / weights_scaling_factor[:, None, None]).to(torch.float8_e4m3fn)
             elif weights_scaling_factor.dim() == 2:
                 # Per-channel scaling: check which dimension matches
+                if weights_scaling_factor.shape[0] != weight.shape[0]:
+                    raise ValueError(
+                        f"First dimension (num_experts) mismatch for FP8_PC_PT quantization. "
+                        f"weight shape: {weight.shape}, scale shape: {weights_scaling_factor.shape}"
+                    )
                 if weights_scaling_factor.shape[-1] == weight.shape[-1]:
                     # (num_experts, input_dim) -> (num_experts, 1, input_dim), BMM-style
                     return (weight / weights_scaling_factor.unsqueeze(-2)).to(torch.float8_e4m3fn)
