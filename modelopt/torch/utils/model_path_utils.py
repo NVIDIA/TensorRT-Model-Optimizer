@@ -57,13 +57,6 @@ def is_huggingface_model_id(model_path: str) -> bool:
     Returns:
         True if it appears to be a HuggingFace model ID, False if it's a local path
 
-    Examples:
-        >>> is_huggingface_model_id("microsoft/DialoGPT-medium")
-        True
-        >>> is_huggingface_model_id("/path/to/local/model")
-        False
-        >>> is_huggingface_model_id("./local_model")
-        False
     """
     # If it's a valid local directory, it's not a Hub model ID
     if os.path.isdir(model_path):
@@ -74,23 +67,17 @@ def is_huggingface_model_id(model_path: str) -> bool:
     if any(model_path.startswith(indicator) for indicator in local_path_indicators):
         return False
 
-    # If it contains OS-specific path separators, it's likely a local path
-    if os.path.sep in model_path or (os.path.altsep and os.path.altsep in model_path):
-        # Exception: if it doesn't exist locally and looks like org/model format, might be Hub ID
-        return (
-            not os.path.exists(model_path)
-            and "/" in model_path
-            and model_path.count("/") == 1
-            and not model_path.startswith("/")
-        )
-
-    # If it contains exactly one forward slash and looks like org/model format, likely a Hub ID
+    # Check for org/model format (typical HuggingFace Hub model ID)
     if "/" in model_path and model_path.count("/") == 1 and not model_path.startswith("/"):
-        # Additional check: Hub model IDs typically don't contain certain characters
+        # Hub model IDs typically don't contain certain characters
         invalid_chars = ["\\", ":", "*", "?", '"', "<", ">", "|"]
         if not any(char in model_path for char in invalid_chars):
             # Make sure it doesn't look like a local relative path
             return not model_path.startswith(("./", "../"))
+
+    # If it contains OS-specific path separators and exists locally, it's a local path
+    if os.path.sep in model_path or (os.path.altsep and os.path.altsep in model_path):
+        return False
 
     return False
 
@@ -120,14 +107,7 @@ def resolve_model_path(
         ValueError: If the model path cannot be resolved and download_files is False
         ImportError: If required packages (transformers, huggingface_hub) are not available
 
-    Examples:
-        >>> # Local path (returned as-is)
-        >>> resolve_model_path("/path/to/local/model")
-        '/path/to/local/model'
 
-        >>> # HuggingFace model ID (resolved to cache)
-        >>> resolve_model_path("microsoft/DialoGPT-medium")
-        '/home/user/.cache/huggingface/hub/models--microsoft--DialoGPT-medium/snapshots/abc123'
     """
     # If it's already a local directory, return as-is
     if os.path.isdir(model_name_or_path):
@@ -211,24 +191,17 @@ def resolve_model_path(
 def fetch_model_config(
     model_id: str,
     filename: str = "config.json",
-    trust_remote_code: bool = False,
 ) -> dict | None:
     """Fetch a configuration file from either a local path or HuggingFace Hub.
 
     Args:
         model_id: Either a local directory path or HuggingFace model ID
         filename: Name of the config file to fetch (default: "config.json")
-        trust_remote_code: Whether to trust remote code when loading
 
     Returns:
         The configuration dictionary if successful, None otherwise
 
-    Examples:
-        >>> # Fetch from local path
-        >>> config = fetch_model_config("/path/to/local/model")
 
-        >>> # Fetch from HuggingFace Hub
-        >>> config = fetch_model_config("microsoft/DialoGPT-medium")
     """
     # Try local path first
     if not is_huggingface_model_id(model_id):
@@ -276,15 +249,7 @@ class ModelPathResolver:
         download_files: Whether to download files if not found in cache
         allow_patterns: List of file patterns to download
 
-    Examples:
-        >>> # Use as context manager
-        >>> with ModelPathResolver("microsoft/DialoGPT-medium") as resolver:
-        ...     local_path = resolver.local_path
-        ...     config = resolver.get_config()
 
-        >>> # Use as regular class
-        >>> resolver = ModelPathResolver("microsoft/DialoGPT-medium")
-        >>> local_path = resolver.resolve()
     """
 
     def __init__(
@@ -334,11 +299,7 @@ class ModelPathResolver:
 
     def get_config(self, filename: str = "config.json") -> dict | None:
         """Fetch a configuration file."""
-        return fetch_model_config(
-            self.model_name_or_path,
-            filename=filename,
-            trust_remote_code=self.trust_remote_code,
-        )
+        return fetch_model_config(self.model_name_or_path, filename=filename)
 
     def get_file_path(self, filename: str) -> Path:
         """Get the path to a specific file in the model directory."""
