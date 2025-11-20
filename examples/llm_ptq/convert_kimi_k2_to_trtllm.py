@@ -52,12 +52,12 @@ def unpack_int32_to_int4(weight_packed: torch.Tensor) -> torch.Tensor:
 
     # Each int32 = 4 bytes, each byte has 2 int4 values
     # So shape (N, K/8) int32 -> (N, K/8, 4) uint8 -> (N, K/2) uint8
-    N, K_div_8 = weight_packed.shape
-    w_packed_uint8 = w_packed_uint8.view(N, K_div_8 * 4)
+    n, k_div_8 = weight_packed.shape
+    w_packed_uint8 = w_packed_uint8.view(n, k_div_8 * 4)
 
     # Allocate output: (N, K) where K = K_div_8 * 8
-    K = K_div_8 * 8
-    w_unpacked = torch.zeros(N, K, dtype=torch.int8)
+    k = k_div_8 * 8
+    w_unpacked = torch.zeros(n, k, dtype=torch.int8)
 
     # Extract low and high nibbles
     w_unpacked[:, 0::2] = (w_packed_uint8 & 0x0F).to(torch.int8)
@@ -80,8 +80,8 @@ def pack_int4_to_int32_gptq(weight_unpacked: torch.Tensor) -> torch.Tensor:
     Returns:
         packed: Shape (N, K/8) dtype int32
     """
-    N, K = weight_unpacked.shape
-    assert K % 8 == 0, "K must be divisible by 8"
+    n, k = weight_unpacked.shape
+    assert k % 8 == 0, "K must be divisible by 8"
 
     # Convert int4 [-8, 7] to uint4 [0, 15]
     w_uint4 = weight_unpacked.clone()
@@ -89,12 +89,12 @@ def pack_int4_to_int32_gptq(weight_unpacked: torch.Tensor) -> torch.Tensor:
     w_uint4 = w_uint4.to(torch.uint8)
 
     # Pack 2 uint4 into 1 uint8
-    w_packed_uint8 = torch.zeros(N, K // 2, dtype=torch.uint8)
+    w_packed_uint8 = torch.zeros(n, k // 2, dtype=torch.uint8)
     w_packed_uint8 = (w_uint4[:, 1::2] << 4) | (w_uint4[:, 0::2])
 
     # Reshape to int32
     w_packed_int32 = (
-        w_packed_uint8.view(N, K // 8, 4).view(torch.uint8).view(N, K // 8).view(torch.int32)
+        w_packed_uint8.view(n, k // 8, 4).view(torch.uint8).view(n, k // 8).view(torch.int32)
     )
 
     return w_packed_int32.contiguous()
@@ -121,7 +121,7 @@ def convert_compressed_tensor_to_gptq(
             - scales: Shape (K/group_size, N) dtype fp16 (transposed!)
             - qzeros: Shape (K/group_size, N/8) dtype int32 (for symmetric, all zeros)
     """
-    N, K = weight_shape
+    n, k = weight_shape
 
     # TRT-LLM expects weights transposed: (K, N) instead of (N, K)
     # But packed format keeps the packing dimension, so:
@@ -134,11 +134,11 @@ def convert_compressed_tensor_to_gptq(
     # For symmetric quantization, we use zero as the zero-point
     # GPTQ format expects qzeros in packed format
     # Shape: (K/group_size, N/8) since zeros are also packed 8 per int32
-    num_groups = K // group_size
+    num_groups = k // group_size
     # Create zeros tensor - for symmetric quantization, zero-point is 8 (middle of [0,15])
     # Pack as uint4: each int32 contains 8 nibbles of value 8
     # Create as bytes first then view as int32
-    qzeros_uint8 = torch.full((num_groups, N // 2), 0x88, dtype=torch.uint8)
+    qzeros_uint8 = torch.full((num_groups, n // 2), 0x88, dtype=torch.uint8)
     qzeros = qzeros_uint8.view(torch.int32).contiguous()
 
     return {
@@ -151,7 +151,7 @@ def convert_compressed_tensor_to_gptq(
 def convert_checkpoint(
     input_dir: str,
     output_dir: str,
-    num_shards: int = None,
+    num_shards: int | None = None,
     skip_existing: bool = True,
 ):
     """
@@ -190,7 +190,7 @@ def convert_checkpoint(
             print(f"\n⏭️  Skipping {shard_name} (already exists)")
             # Still need to build the weight_map from existing file
             with safetensors.safe_open(str(output_file), framework="pt", device="cpu") as f:
-                for key in f.keys():
+                for key in f:
                     new_weight_map[key] = shard_name
             continue
 
@@ -199,7 +199,7 @@ def convert_checkpoint(
         # Load source shard
         source_tensors = {}
         with safetensors.safe_open(str(shard_file), framework="pt", device="cpu") as f:
-            for key in f.keys():
+            for key in f:
                 source_tensors[key] = f.get_tensor(key)
 
         # Convert tensors
@@ -238,7 +238,7 @@ def convert_checkpoint(
                 else:
                     print(f"Warning: Missing scale or shape for {key}")
 
-            elif key.endswith(".weight_scale") or key.endswith(".weight_shape"):
+            elif key.endswith((".weight_scale", ".weight_shape")):
                 # Skip these as they're handled above
                 continue
             else:
