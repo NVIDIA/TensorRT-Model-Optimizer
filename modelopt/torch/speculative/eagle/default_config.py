@@ -48,5 +48,6 @@ default_eagle_config = {
     "parallel_draft_step": 1,
     "parallel_draft_heads_num_layers": 1,
     "has_lm_head": False,
+    "use_embedding": True,
     "head_dim": 128,
 }
