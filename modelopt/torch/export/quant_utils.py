@@ -791,6 +791,12 @@ def to_quantized_weight(
                         f"First dimension (num_experts) mismatch for FP8_PC_PT quantization. "
                         f"weight shape: {weight.shape}, scale shape: {weights_scaling_factor.shape}"
                     )
+                if weight.shape[-1] == weight.shape[-2]:
+                    raise ValueError(
+                        f"Ambiguous scaling dimension for FP8_PC_PT quantization with square weight matrix. "
+                        f"weight shape: {weight.shape}, scale shape: {weights_scaling_factor.shape}. "
+                        f"Cannot determine if scaling should be applied to input_dim or output_dim."
+                    )
                 if weights_scaling_factor.shape[-1] == weight.shape[-1]:
                     # (num_experts, input_dim) -> (num_experts, 1, input_dim), BMM-style
                     return (weight / weights_scaling_factor.unsqueeze(-2)).to(torch.float8_e4m3fn)
