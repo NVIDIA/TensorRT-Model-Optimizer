@@ -111,10 +111,15 @@ __all__ = ["drop_mcore_language_model_layers"]
 class _DynamicParallelLinear(DynamicModule):
     """A parallel linear layer with dynamic hyperparams."""
 
-    def _setup(self):
+    def _setup(self, *, input_size: TracedHp | None = None, output_size: TracedHp | None = None):
         # register hyperparameters
-        self._register_hparam("input_size", TracedHp(list(range(1, self.input_size + 1))))
-        self._register_hparam("output_size", TracedHp(list(range(1, self.output_size + 1))))
+        if input_size is None:
+            input_size = TracedHp(list(range(1, self.input_size + 1)))
+        self._register_hparam("input_size", input_size)
+
+        if output_size is None:
+            output_size = TracedHp(list(range(1, self.output_size + 1)))
+        self._register_hparam("output_size", output_size)
 
         # register dynamic attributes of the class
         self._register_dynamic_attribute("weight", self._get_weight)
@@ -137,8 +142,8 @@ class _DynamicParallelLinear(DynamicModule):
 class _DynamicColumnParallelLinear(_DynamicParallelLinear):
     """A ColumnParallelLinear layer with dynamic hyperparams."""
 
-    def _setup(self):
-        super()._setup()
+    def _setup(self, *, input_size: TracedHp | None = None, output_size: TracedHp | None = None):
+        super()._setup(input_size=input_size, output_size=output_size)
         self._register_dynamic_attribute(
             "output_size_per_partition", lambda mod, val: mod.output_size
         )
@@ -148,8 +153,8 @@ class _DynamicColumnParallelLinear(_DynamicParallelLinear):
 class _DynamicRowParallelLinear(_DynamicParallelLinear):
     """A RowParallelLinear layer with dynamic hyperparams."""
 
-    def _setup(self):
-        super()._setup()
+    def _setup(self, *, input_size: TracedHp | None = None, output_size: TracedHp | None = None):
+        super()._setup(input_size=input_size, output_size=output_size)
         self._register_dynamic_attribute(
             "input_size_per_partition", lambda mod, val: mod.input_size
         )
@@ -165,8 +170,10 @@ class _DynamicRowParallelLinear(_DynamicParallelLinear):
 class _DynamicEmbedding(DynamicModule):
     """A Embedding layer with dynamic hyperparams."""
 
-    def _setup(self):
-        self._register_hparam("embedding_dim", TracedHp(list(range(1, self.embedding_dim + 1))))
+    def _setup(self, *, embedding_dim: TracedHp | None = None):
+        if embedding_dim is None:
+            embedding_dim = TracedHp(list(range(1, self.embedding_dim + 1)))
+        self._register_hparam("embedding_dim", embedding_dim)
         self._register_dynamic_attribute("weight", self._get_weight)
 
     @staticmethod
@@ -184,14 +191,13 @@ class _DynamicLanguageModelEmbedding(DynamicModule):
     """A LanguageModelEmbedding layer with dynamic hyperparams."""
 
     def _setup(self):
+        # Use same embedding_dim hparam for position and tokentype embeddings
         DMRegistry.convert(self.word_embeddings)
         hp_hidden_size = self.word_embeddings.get_hparam("embedding_dim")
         if hasattr(self, "position_embeddings") and self.position_embeddings is not None:
-            DMRegistry.convert(self.position_embeddings)
-            self.position_embeddings.embedding_dim = hp_hidden_size
+            DMRegistry.convert(self.position_embeddings, embedding_dim=hp_hidden_size)
         if hasattr(self, "tokentype_embeddings") and self.tokentype_embeddings is not None:
-            DMRegistry.convert(self.tokentype_embeddings)
-            self.tokentype_embeddings.embedding_dim = hp_hidden_size
+            DMRegistry.convert(self.tokentype_embeddings, embedding_dim=hp_hidden_size)
 
     def export(self) -> torch.nn.Module:
         self.word_embeddings.export()
@@ -207,13 +213,9 @@ class _DynamicLanguageModelEmbedding(DynamicModule):
 class _DynamicFusedLayerNorm(_DynamicLayerNorm):
     """A FusedLayerNorm layer with dynamic hyperparams."""
 
-    def _setup(self):
-        # construct hidden_size with Hparam as last dimension
-        hidden_size = list(self.hidden_size)
-        hidden_size[-1] = TracedHp(list(range(1, hidden_size[-1] + 1)))
-
-        # register the hyperparameter with a new name
-        self._register_hparam("num_features", hidden_size[-1])
+    def _setup(self, *, num_features: TracedHp):
+        """Setup the FusedLayerNorm dynamic module with pre-defined num_features hparam."""
+        self._register_hparam("num_features", num_features)
 
         # register dynamic attributes
         self._register_dynamic_attribute("weight", self._cut_to_active_features)
@@ -234,7 +236,8 @@ class _DynamicMLP(DynamicModule):
     Use for standard MLP and inside MoE layers (SequentialMLP and SharedExpertMLP).
     """
 
-    def _setup(self):
+    def _setup(self, *, hidden_size: TracedHp):
+        """Setup the MLP dynamic module with global hidden_size hparam."""
         assert self.input_size == self.config.hidden_size, (
             "MLP input_size must be equal to hidden_size"
         )
@@ -244,19 +247,20 @@ class _DynamicMLP(DynamicModule):
             self.hparam_name = "moe_ffn_hidden_size"
         else:
             self.hparam_name = "ffn_hidden_size"
-        DMRegistry.convert(self.linear_fc1)
-        DMRegistry.convert(self.linear_fc2)
 
         ffn_hidden_size = TracedHp(list(range(1, self.config.ffn_hidden_size + 1)))
-        fc1_output_size = (
+        self._register_hparam(self.hparam_name, ffn_hidden_size)
+
+        linear_fc1_output_size = (
             build_concat_hp([ffn_hidden_size] * 2)
             if self.config.gated_linear_unit
             else ffn_hidden_size
         )
+        DMRegistry.convert(
+            self.linear_fc1, input_size=hidden_size, output_size=linear_fc1_output_size
+        )
 
-        self._register_hparam(self.hparam_name, ffn_hidden_size)
-        self.linear_fc1.output_size = fc1_output_size
-        self.linear_fc2.input_size = ffn_hidden_size
+        DMRegistry.convert(self.linear_fc2, input_size=ffn_hidden_size, output_size=hidden_size)
 
         self._register_dynamic_attribute("input_size", lambda mod, val: mod.linear_fc1.input_size)
 
@@ -299,11 +303,6 @@ class _DynamicMLP(DynamicModule):
         # Convert squared sum to L2 norm
         return self._activations.pow(0.5)
 
-    def set_hidden_size_hp(self, hidden_size: TracedHp) -> None:
-        """Set hidden size for shared expert."""
-        self.linear_fc1.input_size = hidden_size
-        self.linear_fc2.output_size = hidden_size
-
     def modify(self, ffn_hidden_size_divisor: int, **kwargs) -> None:
         """Modify the ffn_hidden_size hparam choices based on search space config."""
         hp_mlp = self.get_hparam(self.hparam_name)
@@ -331,37 +330,27 @@ def expand_head_indices(heads: torch.LongTensor, hidden_size_per_head: int) -> t
 class _DynamicQKVColumnParallelLinear(DynamicModule, ColumnParallelLinear):
     """An mcore ColumnParallelLinear layer for linear_qkv with dynamic attributes."""
 
-    def _setup(self):
-        pass  # setup is done in convert
-
-    @classmethod
-    @torch.no_grad()
-    def convert(
-        cls, mod: ColumnParallelLinear, num_heads_per_group: TracedHp, num_query_groups: TracedHp
-    ) -> "_DynamicQKVColumnParallelLinear":
-        """Convert a ColumnParallelLinear to a _DynamicQKVColumnParallelLinear."""
-        super().convert(mod)
-        assert isinstance(mod, _DynamicQKVColumnParallelLinear)
-
-        mod._register_hparam("input_size", TracedHp(list(range(1, mod.input_size + 1))))
-        mod._register_dynamic_attribute(
+    def _setup(
+        self, *, num_heads_per_group: TracedHp, num_query_groups: TracedHp, hidden_size: TracedHp
+    ):
+        """Setup the _DynamicQKVColumnParallelLinear dynamic module with global hidden_size hparam."""
+        self._register_hparam("input_size", hidden_size)
+        self._register_dynamic_attribute(
             "output_size",
             lambda mod, val: (num_heads_per_group.active + 2)
             * num_query_groups.active
             * mod.config.kv_channels,
         )
-        mod._register_dynamic_attribute(
+        self._register_dynamic_attribute(
             "output_size_per_partition", lambda mod, val: mod.output_size
         )
-        mod._register_dynamic_attribute("weight", mod._get_weight)
-        mod._register_dynamic_attribute("bias", mod._get_bias)
+        self._register_dynamic_attribute("weight", self._get_weight)
+        self._register_dynamic_attribute("bias", self._get_bias)
 
-        mod._register_temp_attribute(
+        self._register_temp_attribute(
             "_parent_hparams_refs",
             {"num_heads_per_group": num_heads_per_group, "num_query_groups": num_query_groups},
         )
-
-        return mod
 
     def _get_output_size_indices(self) -> torch.LongTensor:
         """Get the indices of the output size based on sorted + pruned heads and query groups."""
@@ -441,35 +430,27 @@ class _DynamicQKVColumnParallelLinear(DynamicModule, ColumnParallelLinear):
 class _DynamicProjRowParallelLinear(DynamicModule, RowParallelLinear):
     """An mcore RowParallelLinear layer for linear_qkv with dynamic attributes."""
 
-    def _setup(self):
-        pass  # Rest of the setup is done in convert
-
-    @classmethod
-    @torch.no_grad()
-    def convert(
-        cls, mod: RowParallelLinear, num_heads_per_group: TracedHp, num_query_groups: TracedHp
-    ) -> "_DynamicProjRowParallelLinear":
-        """Convert a RowParallelLinear to a _DynamicProjRowParallelLinear."""
-        super().convert(mod)
-        assert isinstance(mod, _DynamicProjRowParallelLinear)
-
-        mod._register_hparam("output_size", TracedHp(list(range(1, mod.output_size + 1))))
-        mod._register_dynamic_attribute(
+    def _setup(
+        self, *, num_heads_per_group: TracedHp, num_query_groups: TracedHp, hidden_size: TracedHp
+    ):
+        """Setup the _DynamicProjRowParallelLinear dynamic module with global hidden_size hparam."""
+        self._register_hparam("output_size", hidden_size)
+        self._register_dynamic_attribute(
             "input_size",
             lambda mod, val: (num_heads_per_group.active)
             * num_query_groups.active
             * mod.config.kv_channels,
         )
-        mod._register_dynamic_attribute("input_size_per_partition", lambda mod, val: mod.input_size)
-        mod._register_dynamic_attribute("weight", mod._get_weight)
-        mod._register_dynamic_attribute("bias", mod._get_bias)
+        self._register_dynamic_attribute(
+            "input_size_per_partition", lambda mod, val: mod.input_size
+        )
+        self._register_dynamic_attribute("weight", self._get_weight)
+        self._register_dynamic_attribute("bias", self._get_bias)
 
-        mod._register_temp_attribute(
+        self._register_temp_attribute(
             "_parent_hparams_refs",
             {"num_heads_per_group": num_heads_per_group, "num_query_groups": num_query_groups},
         )
-
-        return mod
 
     def _get_input_size_indices(self) -> torch.LongTensor:
         """Get the indices of the input size based on sorted + pruned heads and query groups."""
@@ -537,7 +518,8 @@ class _DynamicSelfAttention(DynamicModule):
     NOTE: Layernorms apply on hidden_size_per_attention_head hence no need to convert to dynamic
     """
 
-    def _setup(self):
+    def _setup(self, *, hidden_size: TracedHp):
+        """Setup the SelfAttention dynamic module with global hidden_size hparam."""
         # Register hparams
         num_heads_per_group = TracedHp(
             list(
@@ -605,10 +587,16 @@ class _DynamicSelfAttention(DynamicModule):
 
         # Convert the fused qkv and output projection linear layer to dynamic module
         _DynamicQKVColumnParallelLinear.convert(
-            self.linear_qkv, num_heads_per_group, num_query_groups
+            self.linear_qkv,
+            num_heads_per_group=num_heads_per_group,
+            num_query_groups=num_query_groups,
+            hidden_size=hidden_size,
         )
         _DynamicProjRowParallelLinear.convert(
-            self.linear_proj, num_heads_per_group, num_query_groups
+            self.linear_proj,
+            num_heads_per_group=num_heads_per_group,
+            num_query_groups=num_query_groups,
+            hidden_size=hidden_size,
         )
 
         # register importance estimator for linear_qkv.output_size and linear_proj.input_size
@@ -694,12 +682,12 @@ class _DynamicSelfAttention(DynamicModule):
 class _DynamicTopKRouter(ABC, DynamicModule):
     """A TopKRouter with dynamic hyperparams."""
 
-    def _setup(self):
-        # Register hparams for router weight dimensions (will be overridden by _DynamicSequentialMLP's hp)
-        # Router weight shape: [num_moe_experts, hidden_size]
-        self._register_hparam("num_experts", TracedHp(list(range(1, self.weight.shape[0] + 1))))
-        # Register hidden_size reference (will be overridden by _DynamicMoELayer's hidden_size)
-        self._register_hparam("hidden_size", TracedHp(list(range(1, self.weight.shape[1] + 1))))
+    def _setup(self, *, hidden_size: TracedHp, num_experts: TracedHp):
+        """Setup the TopKRouter dynamic module with global hidden_size hparam."""
+        # Register hparams for router weight dimensions
+        # Router weight shape: [num_experts, hidden_size]
+        self._register_hparam("num_experts", num_experts)
+        self._register_hparam("hidden_size", hidden_size)
 
         # Register dynamic attributes
         self._register_dynamic_attribute("weight", self._get_router_weight)
@@ -719,16 +707,13 @@ class _DynamicTopKRouter(ABC, DynamicModule):
     def _get_slice_by_num_experts(mod: "_DynamicTopKRouter", val: torch.Tensor) -> torch.Tensor:
         return get_sliced_tensor(mod, val, "num_experts")
 
-    def set_hidden_size_hp(self, hidden_size: TracedHp) -> None:
-        """Set hidden_size hparam for router weights from global hidden_size hparam."""
-        self.hidden_size = hidden_size
-
 
 @DMRegistry.register({SequentialMLP: "megatron.core.transformer.moe.experts.SequentialMLP"})
 class _DynamicSequentialMLP(DynamicModule):
     """A SequentialMLP with dynamic hyperparams."""
 
-    def _setup(self):
+    def _setup(self, *, hidden_size: TracedHp):
+        """Setup the SequentialMLP dynamic module with global hidden_size hparam."""
         # Register hparam for number of active experts (will be shared with _DynamicTopKRouter's hp)
         num_moe_experts = TracedHp(list(range(1, self.num_local_experts + 1)))
         self._register_hparam("num_local_experts", num_moe_experts)
@@ -736,8 +721,8 @@ class _DynamicSequentialMLP(DynamicModule):
         # Convert local_experts list and each individual expert MLP to dynamic modules
         DynamicModuleList.convert(self.local_experts)
         self.local_experts.depth = num_moe_experts  # Reuse same hparam for depth
-        for i in range(len(self.local_experts)):
-            DMRegistry.convert(self.local_experts[i])
+        for expert in self.local_experts:
+            DMRegistry.convert(expert, hidden_size=hidden_size)
 
         # Track forward activations for importance estimation.
         # _activations name is needed for get_activations_and_layer_scores to save scores for re-running pruning.
@@ -750,11 +735,6 @@ class _DynamicSequentialMLP(DynamicModule):
         )
         self.hook_handle = self.register_forward_hook(self._expert_l2_imp_forward_hook)
         num_moe_experts.register_importance(self._estimate_expert_importance)
-
-    def set_hidden_size_hp(self, hidden_size: TracedHp) -> None:
-        """Set hidden_size hparam for all expert MLPs from global hidden_size hparam."""
-        for expert in self.local_experts:
-            expert.set_hidden_size_hp(hidden_size)
 
     def _expert_l2_imp_forward_hook(self, module, input, output):
         """Track expert importance based on L2 norms of expert outputs."""
@@ -808,13 +788,14 @@ class _DynamicSequentialMLP(DynamicModule):
 class _DynamicMoELayer(DynamicModule):
     """A MoELayer with dynamic hyperparams."""
 
-    def _setup(self):
+    def _setup(self, *, hidden_size: TracedHp):
+        """Setup the MoELayer dynamic module with global hidden_size hparam."""
         # Convert to dynamic modules
         # Reuse _DynamicSequentialMLP's num_moe_experts hparam for _DynamicTopKRouter's hparam so
         #   importance estimator and depth hparam is retained.
-        DMRegistry.convert(self.router)
-        DMRegistry.convert(self.experts)
+        DMRegistry.convert(self.experts, hidden_size=hidden_size)
         num_moe_experts_hp = self.experts.get_hparam("num_local_experts")
+        DMRegistry.convert(self.router, hidden_size=hidden_size, num_experts=num_moe_experts_hp)
 
         # NOTE: Use num_moe_experts hparam name in top-level module to match TransformerConfig's name
         self._register_hparam("num_moe_experts", num_moe_experts_hp)
@@ -822,9 +803,8 @@ class _DynamicMoELayer(DynamicModule):
             "num_local_experts",
             lambda mod, val: num_moe_experts_hp.active,  # EP = 1
         )
-        self.router.num_experts = num_moe_experts_hp
         if self.use_shared_expert:
-            DMRegistry.convert(self.shared_experts)
+            DMRegistry.convert(self.shared_experts, hidden_size=hidden_size)
 
     def forward(self, *args, **kwargs):
         """Forward pass for the MoE layer."""
@@ -835,13 +815,6 @@ class _DynamicMoELayer(DynamicModule):
         ):
             raise RuntimeError("Only run forward after exporting the pruned model")
         return super().forward(*args, **kwargs)
-
-    def set_hidden_size_hp(self, hidden_size: TracedHp) -> None:
-        """Set hidden size for all MoE components from global hidden_size hparam."""
-        self.router.set_hidden_size_hp(hidden_size)
-        self.experts.set_hidden_size_hp(hidden_size)
-        if self.use_shared_expert:
-            self.shared_experts.set_hidden_size_hp(hidden_size)
 
     def modify(
         self, *, num_moe_experts_divisor: int = 1, ffn_hidden_size_divisor: int = 1, **kwargs
@@ -907,7 +880,7 @@ class MambaTransformerLayerMixin(nn.Module):
             output, _ = output  # [seq_len, batch_size, hidden_size]
 
         # Dont aggregate activations from non-max subnets (e.g. from profiling)
-        # NOTE: max_hidden_size is set in set_hidden_size_hp for both DyamicModule classes below!
+        # NOTE: max_hidden_size is set in both DyamicModule classes below!
         if hidden_states.shape[-1] != self.max_hidden_size:
             return
 
@@ -929,31 +902,22 @@ class MambaTransformerLayerMixin(nn.Module):
 class _DynamicTransformerLayer(DynamicModule, MambaTransformerLayerMixin):
     """A TransformerLayer layer with dynamic hyperparams."""
 
-    def _setup(self):
+    def _setup(self, *, hidden_size: TracedHp):
+        """Setup the TransformerLayer dynamic module with global hidden_size hparam."""
         # Convert the layernorms, self-attention, and mlp/moe layers to dynamic modules
         # NOTE: Mamba stack layers have either Attention or MLP, not both unlike GPT models
         if isinstance(self.self_attention, SelfAttention):
-            DMRegistry.convert(self.input_layernorm)
-            DMRegistry.convert(self.self_attention)
+            DMRegistry.convert(self.input_layernorm, num_features=hidden_size)
+            DMRegistry.convert(self.self_attention, hidden_size=hidden_size)
 
         if isinstance(self.mlp, (MLP, MoELayer)):
-            DMRegistry.convert(self.pre_mlp_layernorm)
-            DMRegistry.convert(self.mlp)
+            DMRegistry.convert(self.pre_mlp_layernorm, num_features=hidden_size)
+            DMRegistry.convert(self.mlp, hidden_size=hidden_size)
+
+        self._register_temp_attribute("max_hidden_size", hidden_size.max)
 
         # Register forward hook to collect activations for importance estimation
         self._setup_mixin()
-
-    def set_hidden_size_hp(self, hidden_size: TracedHp) -> None:
-        if isinstance(self.self_attention, SelfAttention):
-            self.input_layernorm.num_features = hidden_size
-            self.self_attention.linear_qkv.input_size = hidden_size
-            self.self_attention.linear_proj.output_size = hidden_size
-
-        if isinstance(self.mlp, (MLP, MoELayer)):
-            self.pre_mlp_layernorm.num_features = hidden_size
-            self.mlp.set_hidden_size_hp(hidden_size)
-
-        self._register_temp_attribute("max_hidden_size", hidden_size.max)
 
     def modify(
         self,
@@ -1178,19 +1142,17 @@ class _DynamicMambaMixer(DynamicModule):
     Will be registered to DMRegistry if Mamba is available.
     """
 
-    def _setup(self):
+    def _setup(self, *, hidden_size: TracedHp):
+        """Setup the MambaMixer dynamic module with global hidden_size hparam."""
         assert self.d_inner == self.nheads * self.headdim, "d_inner must be nheads * headdim"
 
         # Register hyperparameters for Mamba heads and head dimensions
-        # NOTE: d_model will be overwritten in set_hidden_size_hp to model's hidden_size hp
-        # along with related hparams (in_proj.input_size, norm.hidden_size, out_proj.output_size)
-        d_model = TracedHp(list(range(1, self.d_model + 1)))
         mamba_num_heads = MambaNumHeadsHp(list(range(1, self.nheads + 1)), ngroups=self.ngroups)
         mamba_head_dim = TracedHp(list(range(1, self.headdim + 1)))
         d_inner = MambaDInnerHp(mamba_num_heads, mamba_head_dim)
         bc = TracedHp([2 * self.ngroups * self.d_state])  # not configurable
 
-        self._register_hparam("d_model", d_model)
+        self._register_hparam("d_model", hidden_size)
         self._register_hparam("d_inner", d_inner)
         self._register_hparam("mamba_num_heads", mamba_num_heads)
         self._register_hparam("mamba_head_dim", mamba_head_dim)
@@ -1203,10 +1165,10 @@ class _DynamicMambaMixer(DynamicModule):
         self._register_dynamic_attribute("headdim", lambda mod, val: self.mamba_head_dim)
 
         # Convert to dynamic modules
-        DMRegistry.convert(self.in_proj)
-        self.in_proj.output_size = build_concat_hp(
+        in_proj_output_size = build_concat_hp(
             [d_inner, d_inner, bc, mamba_num_heads]
         )  # z, x, B, C, dt
+        DMRegistry.convert(self.in_proj, input_size=hidden_size, output_size=in_proj_output_size)
 
         conv_dim = build_concat_hp([d_inner, bc])  # z, B, C
         DMRegistry.convert(self.conv1d)
@@ -1219,8 +1181,7 @@ class _DynamicMambaMixer(DynamicModule):
             DMRegistry.convert(self.norm)
             self.norm.hidden_size = d_inner
 
-        DMRegistry.convert(self.out_proj)
-        self.out_proj.input_size = d_inner
+        DMRegistry.convert(self.out_proj, input_size=d_inner, output_size=hidden_size)
 
         # Register dynamic attributes for Mamba-specific parameters
         self._register_dynamic_attribute("dt_bias", self._get_dt_bias_A_log_D)
@@ -1343,19 +1304,16 @@ class _DynamicMambaLayer(DynamicModule, MambaTransformerLayerMixin):
     Will be registered to DMRegistry if Mamba is available.
     """
 
-    def _setup(self):
+    def _setup(self, *, hidden_size: TracedHp):
+        """Setup the MambaLayer dynamic module with global hidden_size hparam."""
         # Convert to dynamic module
-        DMRegistry.convert(self.mixer)
-        DMRegistry.convert(self.norm)
-        self._setup_mixin()
+        DMRegistry.convert(self.mixer, hidden_size=hidden_size)
 
-    def set_hidden_size_hp(self, hidden_size: TracedHp) -> None:
-        """Set the hidden size hyperparameter for the layer."""
-        self.mixer.d_model = hidden_size
-        self.mixer.in_proj.input_size = hidden_size
-        self.mixer.out_proj.output_size = hidden_size
-        self.norm.num_features = hidden_size
+        DMRegistry.convert(self.norm, num_features=hidden_size)
+
         self._register_temp_attribute("max_hidden_size", hidden_size.max)
+
+        self._setup_mixin()
 
     def modify(
         self,
@@ -1415,7 +1373,7 @@ class _DynamicMCoreLanguageModel(DynamicModule):
         # Register num_layers hparam for depth pruning
         self._register_hparam("num_layers", TracedHp(list(range(1, self.config.num_layers + 1))))
 
-        # Convert layers to dynamic modules and set the shared hidden_size hparam
+        # Convert layers to dynamic modules and set the shared hidden_size hparam for all layers
         if is_pipeline_first_stage():
             DMRegistry.convert(self.embedding)
             hidden_size = self.embedding.word_embeddings.get_hparam("embedding_dim")
@@ -1425,24 +1383,18 @@ class _DynamicMCoreLanguageModel(DynamicModule):
         self._register_hparam("hidden_size", hidden_size)
 
         for i in range(len(self.decoder.layers)):
-            DMRegistry.convert(self.decoder.layers[i])
-            self.decoder.layers[i].set_hidden_size_hp(hidden_size)
-
-        # NOTE: GPTModel has final_layernorm, MambaModel has final_norm
-        self._register_temp_attribute(
-            "final_norm_attr_name",
-            "final_layernorm" if hasattr(self.decoder, "final_layernorm") else "final_norm",
-        )
+            DMRegistry.convert(self.decoder.layers[i], hidden_size=hidden_size)
 
         if is_pipeline_last_stage():
-            setattr(
-                self.decoder,
-                self.final_norm_attr_name,
-                DMRegistry.convert(getattr(self.decoder, self.final_norm_attr_name)),
+            # NOTE: GPTModel has final_layernorm, MambaModel has final_norm
+            DMRegistry.convert(
+                getattr(
+                    self.decoder,
+                    "final_layernorm" if hasattr(self.decoder, "final_layernorm") else "final_norm",
+                ),
+                num_features=hidden_size,
             )
-            getattr(self.decoder, self.final_norm_attr_name).num_features = hidden_size
-            DMRegistry.convert(self.output_layer)
-            self.output_layer.input_size = hidden_size
+            DMRegistry.convert(self.output_layer, input_size=hidden_size)
             self.output_layer.get_hparam("output_size").choices = [self.output_layer.output_size]
 
         # register importance estimator for hidden_size per hook
@@ -1584,7 +1536,10 @@ class _DynamicMCoreLanguageModel(DynamicModule):
         for layer in self.decoder.layers:
             layer.export()
         if is_pipeline_last_stage():
-            getattr(self.decoder, self.final_norm_attr_name).export()
+            getattr(
+                self.decoder,
+                "final_layernorm" if hasattr(self.decoder, "final_layernorm") else "final_norm",
+            ).export()
             self.output_layer.export()
         return super().export()
 
