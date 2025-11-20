@@ -965,14 +965,14 @@ class _DynamicEagleGPTModel(EagleModel):
         else:
             eagle_logits, _ = self.output_layer(eagle_hidden_states, weight=output_weight)
 
-        eagle_logits = [eagle_logits]
+        draft_logits = [eagle_logits]
         if self.eagle_config.parallel_draft_step > 1:
             # Get additional draft logits from parallel draft heads
             for draft_head in self.eagle_module.parallel_draft_heads:
-                draft_logits, _ = draft_head(eagle_hidden_states)
-                eagle_logits.append(draft_logits)
+                parallel_logits, _ = draft_head(eagle_hidden_states)
+                draft_logits.append(parallel_logits)
 
-        return eagle_logits
+        return draft_logits
 
     def forward(
         self,
