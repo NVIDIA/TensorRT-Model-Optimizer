@@ -16,7 +16,17 @@ docker build -f examples/vllm_serve/Dockerfile -t vllm-modelopt .
 
 ## Calibrate and serve fake quant model in vLLM
 
-Step 1: Modify `quant_config` in `vllm_serve_fake_quant.py` for the desired quantization format
+Step 1: Configure quantization settings.  
+You can either edit the `quant_config` dictionary in `vllm_serve_fakequant.py`, or set the following environment variables to control quantization behavior:
+
+| Variable        | Description                                      | Default             |
+|-----------------|--------------------------------------------------|---------------------|
+| QUANT_DATASET   | Dataset name for calibration                     | cnn_dailymail       |
+| QUANT_CALIB_SIZE| Number of samples used for calibration           | 512                 |
+| QUANT_CFG       | Quantization format                              | NVFP4_DEFAULT_CFG   |
+| AMAX_FILE_PATH  | Optional path to amax file (for loading amax)    | None                |
+
+Set these variables in your shell or Docker environment as needed to customize calibration.
 
 Step 2: Run the following command, with all supported flag as `vllm serve`:
 
@@ -55,6 +65,23 @@ python convert_amax_hf2vllm.py -i <amax.pth> -o <vllm_amax.pth>
 
 Step 2: add `<vllm_amax.pth>` to `quant_config` in `vllm_serve_fakequant.py`
 
-## Know Problems
+## Important Notes
+
+**Amax Synchronization across Tensor Parallel (TP):**
+
+- **For non-per-tensor quantization**: It is **recommended** to use an amax file (via `AMAX_FILE_PATH`) because amax synchronization across TP/EP is not automatically handled. Without an amax file, the amax values can be different across different TP ranks, leading to inconsistent results compared to real-quantization.
+
+- **For per-tensor quantization**: If you are not using an amax file, you need to enable amax synchronization across TP ranks. An example implementation is provided in `fakequant_worker.py` (lines 190-198):
+
+```python
+for name, buffer in model.named_buffers():
+    if name.endswith("_amax"):
+        torch.distributed.all_reduce(
+            buffer, op=torch.distributed.ReduceOp.MAX, group=get_tp_group().device_group
+        )
+torch.distributed.barrier()
+```
+
+## Known Problems
 
 1. AWQ is not yet supported in vLLM.
