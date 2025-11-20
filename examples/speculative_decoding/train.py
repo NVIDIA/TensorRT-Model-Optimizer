@@ -14,11 +14,9 @@
 # limitations under the License.
 
 import argparse
-import os
 
 import torch
 import torch.distributed as dist
-import torch.multiprocessing as mp
 from eagle_utils import DataCollatorWithPadding, make_eagle_supervised_data_module
 from trainer.distill_trainer import EagleSGLTrainer, EagleTPTrainer
 from transformers import AutoTokenizer
@@ -26,27 +24,31 @@ from transformers import AutoTokenizer
 torch.manual_seed(0)
 
 
-def _setup_distributed(rank, args, backend="nccl"):
-    """Initialize distributed environment"""
-    os.environ["MASTER_ADDR"] = "localhost"
-    os.environ["MASTER_PORT"] = args.master_port
-    os.environ["LOCAL_RANK"] = str(rank)
-    # Initialize process group
-    dist.init_process_group(backend, rank=rank, world_size=args.world_size)
+def _check_args(args):
+    """Sanity check for arguments."""
+    # TODO: (hg)
+
+
+def _setup_pgroups(args):
+    """Initialize student/teacher pgroups and set devices."""
+    rank = dist.get_rank()
+    args.teacher_ranks = list(range(len(args.teacher_devices)))
+    args.student_ranks = list(
+        range(len(args.teacher_devices), len(args.teacher_devices) + len(args.student_devices))
+    )
     if rank in args.teacher_ranks:
         torch.cuda.set_device(args.teacher_devices[rank])
     else:
         torch.cuda.set_device(args.student_devices[rank - len(args.teacher_ranks)])
     print(
-        f"Starting process rank={rank}, device={torch.cuda.current_device()}, world_size={args.world_size}"
+        f"Starting process rank={rank}, device={torch.cuda.current_device()}, world_size={dist.get_world_size()}"
     )
     args.teacher_pgroup = dist.new_group(ranks=args.teacher_ranks)
     args.student_pgroup = dist.new_group(ranks=args.student_ranks)
 
 
-def train(rank, args):
-    _setup_distributed(rank, args)
-
+def train(args):
+    """Entrance for training."""
     tokenizer = AutoTokenizer.from_pretrained(
         args.model_path, model_max_length=args.training_seq_len
     )
@@ -55,6 +57,10 @@ def train(rank, args):
     args.offline_data_path = None
     data_module = make_eagle_supervised_data_module(tokenizer, args)
 
+    # Ensure different ranks load the same data
+    g = torch.Generator()
+    g.manual_seed(0)
+
     train_dataloader = torch.utils.data.DataLoader(
         data_module["train_dataset"],
         batch_size=args.batch_size,
@@ -62,12 +68,13 @@ def train(rank, args):
         num_workers=0,
         collate_fn=DataCollatorWithPadding(max_length=args.training_seq_len),
         drop_last=True,
+        generator=g,
     )
     trainer_cls = {
         "sglang": EagleSGLTrainer,
         "hf": EagleTPTrainer,
     }[args.teacher_backend]
-    trainer = trainer_cls(rank, args, tokenizer, train_dataloader)
+    trainer = trainer_cls(dist.get_rank(), args, tokenizer, train_dataloader)
     trainer.train()
     trainer.save(args.out_path)
 
@@ -76,7 +83,7 @@ def main():
     parser = argparse.ArgumentParser(description="Multi-GPU distributed two-stage forward example")
 
     # Training args
-    parser.add_argument("--model_path", type=str, default="TinyLlama/TinyLlama-1.1B-Chat-v1.0")
+    parser.add_argument("--model_path", type=str, required=True, help="Target model path.")
     parser.add_argument("--data_path", type=str, required=True, help="Training dataset.")
     parser.add_argument("--training_seq_len", type=str, default=1024)
     parser.add_argument("--eagle_config_path", type=str, default="eagle_config.json")
@@ -103,26 +110,16 @@ def main():
     parser.add_argument(
         "--total_steps", type=int, default=60000, help="Total number of steps for debugging."
     )
+    parser.add_argument("--master_addr", type=str, default="localhost")
     parser.add_argument("--master_port", type=str, default="12357")
 
     args = parser.parse_args()
-    # TODO: add sanity check for args
 
-    def set_ranks(args):
-        args.world_size = len(args.teacher_devices) + len(args.student_devices)
-        args.teacher_ranks = list(range(len(args.teacher_devices)))
-        args.student_ranks = list(
-            range(len(args.teacher_devices), len(args.teacher_devices) + len(args.student_devices))
-        )
+    dist.init_process_group("nccl")
 
-    set_ranks(args)
-    # Launch multiple processes
-    mp.spawn(
-        train,
-        args=(args,),
-        nprocs=args.world_size,
-        join=True,
-    )
+    _check_args(args)
+    _setup_pgroups(args)
+    train(args)
 
 
 if __name__ == "__main__":
