@@ -12,6 +12,14 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+"""
+Model validation and loss calculation utilities for single-GPU and multi-GPU setups.
+
+Also provides helper functions for loss metrics, KL divergence, JS divergence,
+and similarity losses for knowledge distillation.
+"""
+
 # mypy: ignore-errors
 import functools
 import math

@@ -12,6 +12,15 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+"""
+Model evaluation utilities for models split across multiple GPUs in pipeline-parallel mode.
+
+Coordinates forward passes and loss computation through model shards distributed across GPUs
+using sewing_kit's StitchedModule framework. Relies on validation.py for core loss computation.
+
+Used by validate_model.py during activation scoring for sharded models.
+"""
 # mypy: ignore-errors
 
 from statistics import mean
