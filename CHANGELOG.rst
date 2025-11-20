@@ -23,7 +23,7 @@ Model Optimizer Changelog (Linux)
 
 **Misc**
 
-- Bump TensorRT-LLM docker to 1.2.0rc2.
+- Bump TensorRT-LLM docker to 1.2.0rc0.post1.
 - Bump minimum recommended transformers version to 4.53.
 
 0.39 (2025-11-11)

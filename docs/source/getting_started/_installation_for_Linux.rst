@@ -18,7 +18,7 @@ Latest Model Optimizer (``nvidia-modelopt``) currently has the following system 
 +-------------------------+-----------------------------+
 | PyTorch                 |  >=2.6                      |
 +-------------------------+-----------------------------+
-| TensorRT-LLM (Optional) |  1.2.0rc2                   |
+| TensorRT-LLM (Optional) |  1.2.0rc0.post1             |
 +-------------------------+-----------------------------+
 | ONNX Runtime (Optional) |  1.22                       |
 +-------------------------+-----------------------------+
