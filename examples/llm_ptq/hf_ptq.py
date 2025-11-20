@@ -23,7 +23,6 @@ import numpy as np
 import torch
 from accelerate.hooks import remove_hook_from_module
 from example_utils import (
-    apply_kv_cache_quant,
     build_quant_cfg,
     copy_custom_model_files,
     get_model,
@@ -86,8 +85,10 @@ QUANT_CFG_CHOICES: dict[str, dict[str, Any]] = {
 KV_QUANT_CFG_CHOICES = {
     "none": "none",
     "fp8": "FP8_KV_CFG",
+    "fp8_affine": "FP8_AFFINE_KV_CFG",
     "nvfp4": "NVFP4_KV_CFG",
     "nvfp4_affine": "NVFP4_AFFINE_KV_CFG",
+    "nvfp4_rotate": "NVFP4_KV_ROTATE_CFG",
 }
 
 mto.enable_huggingface_checkpointing()
@@ -257,7 +258,7 @@ def main(args):
         )
         quant_cfg = QUANT_CFG_CHOICES[args.qformat]
         if args.kv_cache_qformat != "none":
-            quant_cfg = apply_kv_cache_quant(
+            quant_cfg = mtq.utils.update_quant_cfg_with_kv_cache_quant(
                 quant_cfg, getattr(mtq, KV_QUANT_CFG_CHOICES[args.kv_cache_qformat])["quant_cfg"]
             )
 
@@ -317,17 +318,23 @@ def main(args):
         tokenizer.padding_side = "left"
 
         # We only quantize the language model for VLMs other than the type supported above.
-        language_model, parent_model = get_language_model_from_vl(model)
-        if language_model is not None:
+        language_model_lineage = get_language_model_from_vl(full_model)
+        if language_model_lineage is not None:
+            language_model = language_model_lineage.pop(-1)
+            ancestors = language_model_lineage
+            # Apply disabled quant to all modules that are not part of language_model so we can exclude them during
+            # HF export.
             disabled_quant_cfg = {
                 "quant_cfg": {"default": {"enable": False}},
                 "algorithm": "max",
             }
 
-            for name, child in parent_model.named_children():
-                # Apply disabled quant to all children except language_model so we can exclude them during HF export.
-                if name != "language_model":
-                    mtq.quantize(child, disabled_quant_cfg, forward_loop=None)
+            memo = set(ancestors) | {language_model}
+            for ancestor in ancestors:
+                for _, module in ancestor.named_children():
+                    if module not in memo:
+                        mtq.quantize(module, disabled_quant_cfg, forward_loop=None)
+                        memo.add(module)
 
             model = language_model
             model_type = get_model_type(model)
@@ -492,13 +499,13 @@ def main(args):
 
             # For VL models, update full_model to use the quantized language model
             if is_nemotron_vl_model:
-                _, parent_model = get_language_model_from_vl(full_model)
-                if parent_model is not None:
+                language_model_lineage = get_language_model_from_vl(full_model)
+                if language_model_lineage is not None:
                     print("Updating full_model with quantized language_model...")
-                    parent_model.language_model = model
+                    language_model_lineage[-2].language_model = model
 
             if args.verbose:
-                mtq.print_quant_summary(model)
+                mtq.print_quant_summary(full_model)
 
             # Run some samples
             torch.cuda.empty_cache()

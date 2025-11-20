@@ -128,7 +128,9 @@ def generate_fp8_scales(backbone):
 
 
 def _gen_dummy_inp_and_dyn_shapes_sdxl(backbone, min_bs=1, opt_bs=1):
-    assert isinstance(backbone, UNet2DConditionModel)
+    assert isinstance(backbone, UNet2DConditionModel) or isinstance(
+        backbone._orig_mod, UNet2DConditionModel
+    )
     cfg = backbone.config
     assert cfg.addition_embed_type == "text_time"
 
@@ -173,7 +175,9 @@ def _gen_dummy_inp_and_dyn_shapes_sdxl(backbone, min_bs=1, opt_bs=1):
 
 
 def _gen_dummy_inp_and_dyn_shapes_sd3(backbone, min_bs=1, opt_bs=1):
-    assert isinstance(backbone, SD3Transformer2DModel)
+    assert isinstance(backbone, SD3Transformer2DModel) or isinstance(
+        backbone._orig_mod, SD3Transformer2DModel
+    )
     cfg = backbone.config
 
     dynamic_shapes = {
@@ -205,7 +209,9 @@ def _gen_dummy_inp_and_dyn_shapes_sd3(backbone, min_bs=1, opt_bs=1):
 
 
 def _gen_dummy_inp_and_dyn_shapes_flux(backbone, min_bs=1, opt_bs=1):
-    assert isinstance(backbone, FluxTransformer2DModel)
+    assert isinstance(backbone, FluxTransformer2DModel) or isinstance(
+        backbone._orig_mod, FluxTransformer2DModel
+    )
     cfg = backbone.config
     text_maxlen = 512
     img_dim = 4096
@@ -251,7 +257,9 @@ def _gen_dummy_inp_and_dyn_shapes_flux(backbone, min_bs=1, opt_bs=1):
 
 
 def _gen_dummy_inp_and_dyn_shapes_ltx(backbone, min_bs=2, opt_bs=2):
-    assert isinstance(backbone, LTXVideoTransformer3DModel)
+    assert isinstance(backbone, LTXVideoTransformer3DModel) or isinstance(
+        backbone._orig_mod, LTXVideoTransformer3DModel
+    )
     cfg = backbone.config
     dtype = backbone.dtype
     video_dim = 2240

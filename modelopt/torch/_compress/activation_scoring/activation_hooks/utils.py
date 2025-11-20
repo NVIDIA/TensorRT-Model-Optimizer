@@ -13,6 +13,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # mypy: ignore-errors
+
+"""Provides a function to register activation hooks for a model.
+Activation hooks are used to compute activation scores for pruning."""
+
 import re
 
 from modelopt.torch._compress.activation_scoring.activation_hooks import hooks
@@ -27,21 +31,8 @@ def register_activation_hooks(
             "independent": hooks.IndependentChannelContributionHook,
             "iterative": hooks.IterativeChannelContributionHook,
         },
-        "mlp": {"contraction_metrics": hooks.MlpHook},
-        "block": {"contraction_metrics": hooks.BlockHook},
-        "actual_block": {
-            "contraction_metrics": hooks.BlockHook,
-            "io_correlation_metrics": hooks.IOCorrelationBlockHook,
-        },
         "self_attn.o_proj": {
             "independent_kv_head_contribution": hooks.IndependentKvHeadContributionHook,
-        },
-        "router": {
-            "stats": hooks.RouterStatsHook,
-            "num_active_experts": hooks.RouterNumActiveExpertsStatsHook,
-            "num_active_experts_unshuffled": hooks.RouterNumActiveExpertsStatsHookUnshuffled,
-            "entropy": hooks.RouterEntropyHook,
-            "ranked_choice_voting": hooks.RankedChoiceVotingHook,
         },
         r"regex:experts\.\d+\.down_proj$": {  # For MoE
             "independent": hooks.IndependentChannelContributionHook,
@@ -49,7 +40,7 @@ def register_activation_hooks(
         # TODO: maybe this is too generic, and we should have it specifically for
         # input_layernorm and post_attention_layernorm; now it might select qk_norms
         "layernorm": {
-            "layer_norm_contribution": hooks.LayerNormlContributionHook,
+            "layer_norm_contribution": hooks.LayerNormContributionHook,
         },
     }
 
@@ -97,20 +88,4 @@ def register_activation_hooks(
             module.register_forward_hook(hook)
             activation_hooks[module_name] = hook
 
-            # TODO: CHECK IF WE NEED THIS FOR OTHER CASES THEN SCOUT MOE
-            #
-            # if ".experts" in module_name:
-            #     moe_module_name = module_name[:module_name.index(".experts")]
-            #     moe_module = model.get_submodule(moe_module_name)
-            #     if hasattr(moe_module, "router"):
-            #         router_module_name = moe_module_name + ".router"
-            #         if router_module_name not in activation_hooks:
-            #             router = moe_module.router
-            #             router_hook = hooks.RouterStatsHook(router, {})
-            #             router.register_forward_hook(router_hook)
-            #             activation_hooks[moe_module_name + ".router"] = router_hook
-
-    # Hook state loading is now handled by the checkpoint manager
-    # if len(activation_hooks) == 0:
-    #     raise ValueError(f"couldn't find any hooks for {target_layer} ")
     return activation_hooks, hook_class
