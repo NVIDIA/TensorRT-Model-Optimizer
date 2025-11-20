@@ -13,6 +13,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""
+Provides a function to validate a model. Runs a model forward pass on a dataset and calculates
+the loss, and optionally registers hooks to capture the inputs and the outputs
+of pytorch modules that are used for activation scoring for pruning."""
+
 import argparse
 import textwrap
 from pathlib import Path
@@ -27,12 +32,14 @@ from transformers import (
     PreTrainedModel,
     PreTrainedTokenizerBase,
 )
-from utils.activation_hooks.utils import register_activation_hooks
 from utils.data.dataloaders import create_validation_dataloader
 from utils.parsing import simple_parse_args_string
 from utils.validate_runtime_pipeline import HiddenStatesAndLMHead, calculate_losses_pipeline
 from utils.validation import calculate_losses
 
+from modelopt.torch._compress.activation_scoring.activation_hooks.utils import (
+    register_activation_hooks,
+)
 from modelopt.torch._compress.tools.checkpoint_utils_hf import load_checkpoint
 from modelopt.torch._compress.tools.logger import aprint, mprint
 from modelopt.torch._compress.tools.runtime import IRuntime, NativeDdpRuntime
@@ -212,7 +219,7 @@ def validate_model(
             Path(f"{args.model_name_or_path}/validate_model_results.txt").write_text(results_str)
             # TODO: send_slack_message(results_str)
 
-    if args.activations_log_dir is not None:
+    if activation_hooks is not None:
         hook_class.dump_activations_logs(activation_hooks, args.activations_log_dir, args, runtime)
 
     return losses, hidden_states_per_batch

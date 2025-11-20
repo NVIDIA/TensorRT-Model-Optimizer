@@ -25,7 +25,6 @@ class EmptyInitOnDevice(torch.overrides.TorchFunctionMode):
             device: `torch.device` to work with
             dtype: `torch.dtype` to work with
 
-
         Example::
             with EmptyInitOnDevice("cuda", dtype=torch.bfloat16):
                 model = LLaMA(model_config)
