@@ -12,10 +12,14 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-# mypy: ignore-errors
+
+"""
+Provides a function to validate a model. Runs a model forward pass on a dataset and calculates
+the loss, and optionally registers hooks to capture the inputs and the outputs
+of pytorch modules that are used for activation scoring for pruning."""
+
 import argparse
 import textwrap
-from copy import deepcopy
 from pathlib import Path
 
 import torch.distributed
@@ -28,6 +32,10 @@ from transformers import (
     PreTrainedModel,
     PreTrainedTokenizerBase,
 )
+from utils.data.dataloaders import create_validation_dataloader
+from utils.parsing import simple_parse_args_string
+from utils.validate_runtime_pipeline import HiddenStatesAndLMHead, calculate_losses_pipeline
+from utils.validation import calculate_losses
 
 from modelopt.torch._compress.activation_scoring.activation_hooks.utils import (
     register_activation_hooks,
@@ -36,13 +44,6 @@ from modelopt.torch._compress.tools.checkpoint_utils_hf import load_checkpoint
 from modelopt.torch._compress.tools.logger import aprint, mprint
 from modelopt.torch._compress.tools.runtime import IRuntime, NativeDdpRuntime
 from modelopt.torch._compress.tools.sharded_checkpoint_utils import load_and_shard_model
-from modelopt.torch._compress.utils.data.dataloaders import create_validation_dataloader
-from modelopt.torch._compress.utils.parsing import simple_parse_args_string
-from modelopt.torch._compress.utils.validate_runtime_pipeline import (
-    HiddenStatesAndLMHead,
-    calculate_losses_pipeline,
-)
-from modelopt.torch._compress.utils.validation import calculate_losses
 
 # #TODO:Import slack from root utils directory
 # root_path = os.path.join(os.path.dirname(__file__), "..", "..")
@@ -54,88 +55,13 @@ from modelopt.torch._compress.utils.validation import calculate_losses
 Two goals:
 1) Calculate lm loss and token accuracy for a model.
 May raise lots of NCCL warnings when it finishes, don't be alarmed.
-Can be used to validate a lit-llama model or a HuggingFace model.
-If HuggingFace, automatically uses pipeline parallelism via device_map="auto".
-If lit-llama, will use pipeline parallelism if called with --pipeline_parallel and run using torchrun.
+Can be used to validate a HuggingFace model.
+Automatically uses pipeline parallelism via device_map="auto".
 
 2) Register hooks to capture the inputs and the outputs of pytorch modules.
 For example, to collect activations scores for various layers (ffn, layer_norm, etc.)
 that are used for pruning (ffn_hidden_size, embedding_pruning, etc).
 See --activations_log_dir and --activation_hooks_kwargs args arguments.
-
-Usage:
-======
-
-###########################################################
-### For lit-llama multi gpu:
-### Use torchrun and the flag --pipeline_parallel.
-### Example:
-
-MODEL="/lustre/fsw/portfolios/coreai/projects/coreai_nvfm_llm/models/meta-llama/Llama-3.1-8B-Instruct"
-DATASET="/lustre/fsw/portfolios/coreai/projects/coreai_nvfm_llm/datasets/diverse_mix/releases/v0.4_mini"
-
-NUM_GPUS=$(python -c "import torch; print(torch.cuda.device_count())")
-torchrun --rdzv-backend=static  --master-addr 127.0.0.1  --master-port  8754  --nproc-per-node=${NUM_GPUS} -m  \
-  scripts.validate_model --pipeline_parallel  \
-  --model_name_or_path=${MODEL}  \
-  --dataset_path ${DATASET}  \
-  --block_size 1024  --eval_samples 32 --seed 42  --shuffle_seed 444  --bos_rate 0.5  --data_column conversation  \
-  --val_dataset_name=__auto__   --micro_batch_size 1   \
-  2>&1 | tee -a "${MODEL}/validate_model_outputs.txt"
-
-
-
-###########################################################
-### For lit-llama multi gpu with teacher similarity scores:
-### Use torchrun and the flag --pipeline_parallel.
-### Specify --teacher_dir.
-### Example:
-
-TEACHER="/lustre/fsw/portfolios/coreai/projects/coreai_nvfm_llm/models/meta-llama/Meta-Llama-3-8B-Instruct"
-MODEL="/lustre/fsw/portfolios/coreai/projects/coreai_nvfm_llm/models/meta-llama/Llama-3.1-8B-Instruct"
-DATASET="/lustre/fsw/portfolios/coreai/projects/coreai_nvfm_llm/datasets/diverse_mix/releases/v0.4_mini"
-
-NUM_GPUS=$(python -c "import torch; print(torch.cuda.device_count())")
-torchrun --rdzv-backend=static  --master-addr 127.0.0.1  --master-port  8754  --nproc-per-node=${NUM_GPUS} -m  \
-  scripts.validate_model --pipeline_parallel  \
-  --model_name_or_path=${MODEL}  \
-  --teacher_dir=${TEACHER} \
-  --dataset_path ${DATASET}  \
-  --block_size 8192  --eval_samples 32 --seed 42  --shuffle_seed 444  --bos_rate 0.5  --data_column conversation  \
-  --val_dataset_name=__auto__   --micro_batch_size 1
-
-
-###########################################################
-### For huggingface models (device_map="auto") or lit-llama single gpu:
-### Use python (not torchrun) and do not use the flag --pipeline_parallel.
-python -m  scripts.validate_model \
-  --all --the --other --args
-### Example:
-
-MODEL="/lustre/fsw/portfolios/coreai/projects/coreai_nvfm_llm/models/meta-llama/Llama-3.1-8B-Instruct-HF"
-DATASET="/lustre/fsw/portfolios/coreai/projects/coreai_nvfm_llm/datasets/diverse_mix/releases/v0.4_mini"
-
-python -m  \
-  scripts.validate_model  \
-  --model_name_or_path=${MODEL}  \
-  --dataset_path ${DATASET}  \
-  --block_size 1024  --eval_samples 32 --seed 42  --shuffle_seed 444  --bos_rate 0.5  --data_column conversation  \
-  --val_dataset_name=__auto__   --micro_batch_size 1   \
-  2>&1 | tee -a "${MODEL}/validate_model_outputs.txt"
-
-
-
-###########################################################
-### Calculate activations log (channel contribution) for lit-llama multi gpu:
-NUM_GPUS=$(python -c "import torch; print(torch.cuda.device_count())")
-torchrun --rdzv-backend=static  --master-addr 127.0.0.1  --master-port  8754  --nproc-per-node=${NUM_GPUS}  \
-  -m  scripts.validate_model --pipeline_parallel  \
-  --model_name_or_path  $MODEL  \
-  --dataset_path  $DATASET  \
-  --block_size 8192  --eval_samples 4096 --seed 42  --bos_rate 0.5  --data_column conversation  \
-  --val_dataset_name=train  --shuffle_seed 81436     --micro_batch_size 4   \
-  --activations_log_dir  activations_log_${FILESAFE_MODEL_NAME}
-
 
 """
 
@@ -150,13 +76,6 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--dataset_path", type=str, required=True)
 
-    parser.add_argument(
-        "--teacher_dir",
-        type=str,
-        default=None,
-        help="If given, calculates teacher similarity scores (kl_div etc.) "
-        "Only works with lit-llama models.",
-    )
     parser.add_argument("--output_dir_name", type=str, default="validation")
     parser.add_argument(
         "--calculate_full_score_ablations",
@@ -167,6 +86,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
     parser.add_argument("--tokenizer_name", type=str, default=None)
     parser.add_argument("--data_column", type=str, default="content")
+    # TODO: Add help text for FIM rate, also for others less obvious args
     parser.add_argument("--fim_rate", type=float, default=0)
     parser.add_argument("--fim_spm_rate", type=float, default=0)
     parser.add_argument("--eval_samples", type=int, default=None)
@@ -299,7 +219,7 @@ def validate_model(
             Path(f"{args.model_name_or_path}/validate_model_results.txt").write_text(results_str)
             # TODO: send_slack_message(results_str)
 
-    if args.activations_log_dir is not None:
+    if activation_hooks is not None:
         hook_class.dump_activations_logs(activation_hooks, args.activations_log_dir, args, runtime)
 
     return losses, hidden_states_per_batch
@@ -371,48 +291,11 @@ def prepare_dataloader(
     return val_dataloader
 
 
-def validate_model_with_teacher_similarity_scores(
-    args: argparse.Namespace,
-    runtime: IRuntime,
-):
-    from puzzle_tools.validation_utils import (
-        validate_model_and_extract_hidden_states,
-        validate_model_with_teacher_similarity_metrics,  # importing here to avoid cyclic import
-    )
-
-    output_dir = Path(args.model_name_or_path) / args.output_dir_name
-
-    teacher_val_args = deepcopy(args)
-    teacher_val_args.model_name_or_path = args.teacher_dir
-    teacher_hidden_states = validate_model_and_extract_hidden_states(
-        args=teacher_val_args,
-        model=None,
-        tokenizer=None,
-        output_dir=output_dir,
-        model_name="teacher",
-        runtime=runtime,
-    )
-
-    validate_model_with_teacher_similarity_metrics(
-        args=args,
-        model=None,
-        tokenizer=None,
-        target_hidden_states_per_batch=teacher_hidden_states,
-        output_dir=output_dir,
-        model_name="this_model",
-        runtime=runtime,
-        calculate_full_score_ablations=args.calculate_full_score_ablations,
-    )
-
-
 def main():
     args = parse_args()
     if args.pipeline_parallel:
         with NativeDdpRuntime(dtype=torch.bfloat16) as runtime:
-            if args.teacher_dir is None:
-                validate_model(args=args, runtime=runtime)
-            else:
-                validate_model_with_teacher_similarity_scores(args=args, runtime=runtime)
+            validate_model(args=args, runtime=runtime)
     else:
         validate_model(args=args, runtime=None)
 

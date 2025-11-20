@@ -445,11 +445,11 @@ def _clip_search(
 
 def _augment_graph(
     graph: onnx.GraphProto,
-    wa_pack: list[tuple[gs.Tensor, gs.Tensor, bool, int]],
+    wa_pack: list[tuple[gs.Tensor, gs.Tensor, bool, int, str]],
 ):
     """Extend graph outputs with MatMuls activation input."""
     augmented_outputs = {tensor.name for tensor in graph.output}
-    for act_tensor, _, _, _ in wa_pack:
+    for act_tensor, _, _, _, _ in wa_pack:
         if act_tensor.name not in augmented_outputs:
             graph.output.append(act_tensor)
             augmented_outputs.add(act_tensor.name)
@@ -522,7 +522,7 @@ def _quantize_awq_clip(
     t = time.time()
     alphas = {}
     for i in tqdm(range(len(wa_pack)), desc="Running clip search..."):
-        act_tensor, weight_tensor, do_transpose, gemm_io_type = wa_pack[i]
+        act_tensor, weight_tensor, do_transpose, gemm_io_type, _ = wa_pack[i]
 
         # First capture all the  activation values after calibration data sweep
         output_dicts = {}
@@ -554,7 +554,7 @@ def _quantize_awq_clip(
     # Compute quantized weights and scales which are needed for DQ nodes
     t = time.time()
     for i in tqdm(range(len(wa_pack)), desc="Quantizing the weights..."):
-        act_tensor, weight_tensor, do_transpose, gemm_io_type = wa_pack[i]
+        act_tensor, weight_tensor, do_transpose, gemm_io_type, _ = wa_pack[i]
         gemm_io_type = cast("onnx.TensorProto.DataType", gemm_io_type)
 
         if force_fp16:
@@ -707,7 +707,7 @@ def get_scale(x_max, w_max, alpha):
 
 
 def run_awq_scale_search_per_node(
-    wa_pack: list[tuple[gs.Tensor, gs.Tensor, bool, int]],
+    wa_pack: list[tuple[gs.Tensor, gs.Tensor, bool, int, str]],
     augmented_onnx_path,
     block_size,
     use_zero_point,
@@ -728,7 +728,7 @@ def run_awq_scale_search_per_node(
         range(len(wa_pack)),
         desc="Running AWQ scale search per node" + tqdm_msg_append_str,
     ):
-        act_tensor, weight_tensor, do_transpose, gemm_io_type = wa_pack[i]
+        act_tensor, weight_tensor, do_transpose, gemm_io_type, _ = wa_pack[i]
 
         output_dicts = {}
 
@@ -802,7 +802,7 @@ def run_awq_scale_search_per_node(
 
 
 def get_act_to_weight_map_and_act_to_wa_pack_map(
-    wa_pack: list[tuple[gs.Tensor, gs.Tensor, bool, int]],
+    wa_pack: list[tuple[gs.Tensor, gs.Tensor, bool, int, str]],
 ):
     """Method to return subgraph related maps based on activation-name as key.
 
@@ -813,7 +813,7 @@ def get_act_to_weight_map_and_act_to_wa_pack_map(
     act_to_wa_pack_map = {}
     act_to_quant_nodes_weight_shape_map = {}
     for i in tqdm(range(len(wa_pack)), desc="Getting activation names maps..."):
-        act_tensor, weight_tensor, do_transpose, gemm_io_type = wa_pack[i]
+        act_tensor, weight_tensor, do_transpose, gemm_io_type, _ = wa_pack[i]
         # wa_pack index is stored in map to represent quant nodes
         act_to_wa_pack_map.setdefault(act_tensor.name, []).append(i)
         act_to_quant_nodes_weight_shape_map.setdefault(act_tensor.name, []).append(
@@ -828,7 +828,7 @@ def get_act_to_weight_map_and_act_to_wa_pack_map(
 
 
 def get_x_w_mean_for_subgraph(
-    wa_pack: list[tuple[gs.Tensor, gs.Tensor, bool, int]],
+    wa_pack: list[tuple[gs.Tensor, gs.Tensor, bool, int, str]],
     wa_pack_idx_list,
     augmented_onnx_path,
     x,
@@ -842,7 +842,7 @@ def get_x_w_mean_for_subgraph(
 
     w_concatenated = None
     for wa_pack_idx in wa_pack_idx_list:
-        act_tensor, weight_tensor, do_transpose, gemm_io_type = wa_pack[wa_pack_idx]
+        act_tensor, weight_tensor, do_transpose, gemm_io_type, _ = wa_pack[wa_pack_idx]
         w = numpy_helper.to_array(
             weight_tensor, base_dir=os.path.dirname(augmented_onnx_path)
         ).copy()
@@ -880,7 +880,7 @@ def get_x_w_mean_for_subgraph(
 
 
 def run_awq_scale_search_per_subgraph(
-    wa_pack: list[tuple[gs.Tensor, gs.Tensor, bool, int]],
+    wa_pack: list[tuple[gs.Tensor, gs.Tensor, bool, int, str]],
     act_to_wa_pack_map,
     act_to_quant_nodes_weight_shape_map,
     augmented_onnx_path,
@@ -931,7 +931,7 @@ def run_awq_scale_search_per_subgraph(
             awq_scale[np.isinf(awq_scale)] = 1
             awq_scale[np.isnan(awq_scale)] = 1
             for wa_pack_idx in wa_pack_idx_list:
-                _, weight_tensor, do_transpose, _ = wa_pack[wa_pack_idx]
+                _, weight_tensor, do_transpose, _, _ = wa_pack[wa_pack_idx]
                 w = numpy_helper.to_array(
                     weight_tensor, base_dir=os.path.dirname(augmented_onnx_path)
                 ).copy()
@@ -975,7 +975,7 @@ def run_awq_scale_search_per_subgraph(
 
 def get_parent_child_nodes_map(
     graph: onnx.GraphProto,
-    wa_pack: list[tuple[gs.Tensor, gs.Tensor, bool, int]],
+    wa_pack: list[tuple[gs.Tensor, gs.Tensor, bool, int, str]],
     nodes_to_exclude: list[str],
 ):
     """Get mapping of parent nodes to their MatMul/Gemm nodes with quantizable weights."""
@@ -983,7 +983,7 @@ def get_parent_child_nodes_map(
     output_name_to_node = get_tensor_producer_nodes(graph)
     input_name_to_nodes = get_tensor_consumer_nodes(graph)
 
-    for act_tensor, _, _, _ in wa_pack:
+    for act_tensor, _, _, _, _ in wa_pack:
         parent_name = output_name_to_node[act_tensor.name].name
         parent_child_nodes_map[parent_name] = []
         for node in input_name_to_nodes[act_tensor.name]:
@@ -1069,7 +1069,7 @@ def _quantize_awq_lite(
 
         tensor_names_list = []
         for i in tqdm(range(len(wa_pack)), desc="Getting tensor names..."):
-            act_tensor, weight_tensor, do_transpose, gemm_io_type = wa_pack[i]
+            act_tensor, weight_tensor, do_transpose, gemm_io_type, _ = wa_pack[i]
             tensor_names_list.append(act_tensor.name)
 
         for i in tqdm(range(len(inputs)), desc="Caching activations..."):
@@ -1157,7 +1157,7 @@ def _quantize_awq_lite(
                 awq_lite[wa_pack_idx].best_scale = mean_awq_scale
 
     for i in tqdm(range(len(wa_pack)), desc="Quantizing the weights..."):
-        act_tensor, weight_tensor, do_transpose, gemm_io_type = wa_pack[i]
+        act_tensor, weight_tensor, do_transpose, gemm_io_type, _ = wa_pack[i]
         gemm_io_type = cast("onnx.TensorProto.DataType", gemm_io_type)
 
         if force_fp16:

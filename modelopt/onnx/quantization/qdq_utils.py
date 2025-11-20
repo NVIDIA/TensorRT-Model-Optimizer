@@ -541,7 +541,7 @@ def _get_scale_and_zp(
     node: onnx.NodeProto,
     initializers: dict[str, onnx.TensorProto],
     tensor_producers: dict[str, onnx.NodeProto],
-) -> tuple[np.ndarray, np.ndarray]:
+) -> tuple[onnx.TensorProto, onnx.TensorProto]:
     """Get scale and zero point tensors for a node.
 
     Args:
@@ -550,7 +550,7 @@ def _get_scale_and_zp(
         tensor_producers: Dictionary of tensor producers
 
     Returns:
-        Tuple of (scale_array, zero_point_array)
+        Tuple of (scale_tensor, zero_point_tensor)
 
     Raises:
         ValueError: If scale or zero point cannot be found
@@ -564,7 +564,6 @@ def _get_scale_and_zp(
         if not producer or not producer.attribute:
             raise ValueError(f"Invalid scale producer for {scale_name}")
         scale = producer.attribute[0].t
-    scale_array = onnx.numpy_helper.to_array(scale)
 
     # Get zero point tensor
     zp_name = node.input[2]
@@ -575,9 +574,8 @@ def _get_scale_and_zp(
         if not producer or not producer.attribute:
             raise ValueError(f"Invalid zero point producer for {zp_name}")
         zp = producer.attribute[0].t
-    zp_array = onnx.numpy_helper.to_array(zp)
 
-    return scale_array, zp_array
+    return scale, zp
 
 
 def _get_successive_consumers(
@@ -615,16 +613,16 @@ def _get_successive_consumers(
 
 def _convert_weight(
     weight_array: np.ndarray,
-    scale_array: np.ndarray,
-    zp_array: np.ndarray,
+    scale: onnx.TensorProto,
+    zp: onnx.TensorProto,
     quantized_node: onnx.NodeProto,
 ) -> np.ndarray:
     """Convert a weight tensor to INT8/FP8 format based on scale and zero point.
 
     Args:
         weight_array: The weight tensor to convert
-        scale_array: The scale tensor for quantization
-        zp_array: The zero point tensor for quantization
+        scale: The scale tensor for quantization
+        zp: The zero point tensor for quantization
         quantized_node: The operation node that will use the converted weight
 
     Returns:
@@ -640,6 +638,10 @@ def _convert_weight(
     # Per-op quantization axis mapping (must match ORT config)
     weight_shape = weight_array.shape
     op_type = quantized_node.op_type
+
+    # Convert onnx tensors to numpy array
+    scale_array = onnx.numpy_helper.to_array(scale)
+    zp_array = onnx.numpy_helper.to_array(zp)
 
     # Dynamically determine transB for Gemm
     trans_b = 0
@@ -672,7 +674,7 @@ def _convert_weight(
     zp_array = zp_array.reshape(*reshape_dims)
 
     # Convert to INT8/FP8
-    if zp_array.dtype == onnx_dtype_map["Float8"]:
+    if zp.data_type == onnx_dtype_map["Float8"]:
         scaled = np.asarray(weight_array / scale_array) + zp_array
     else:
         scaled = np.asarray((weight_array / scale_array).round())
@@ -713,7 +715,9 @@ def _cast_fp4(array: np.ndarray) -> np.ndarray:
 def _create_fp8_tensor(scaled: np.ndarray, weight_name: str) -> onnx.TensorProto:
     """Create a FLOAT8E4M3FN tensor directly from numpy array."""
     fp8_data = _cast_fp8(scaled)
-    return onnx.numpy_helper.from_array(fp8_data, weight_name)
+    tensor = onnx.numpy_helper.from_array(fp8_data, weight_name)
+    tensor.data_type = onnx_dtype_map["Float8"]
+    return tensor
 
 
 def qdq_to_dq(onnx_model: onnx.ModelProto) -> onnx.ModelProto:
@@ -765,16 +769,16 @@ def qdq_to_dq(onnx_model: onnx.ModelProto) -> onnx.ModelProto:
             weight_array = onnx.numpy_helper.to_array(weight)
 
             # Get scale and zero point
-            scale_array, zp_array = _get_scale_and_zp(node, initializers, tensor_producers)
+            scale, zp = _get_scale_and_zp(node, initializers, tensor_producers)
 
             # Validate Q->DQ->Op pattern and get consumers
             dq_node, quantized_node = _get_successive_consumers(node, tensor_consumers)
 
             # Convert weight
-            scaled = _convert_weight(weight_array, scale_array, zp_array, quantized_node)
+            scaled = _convert_weight(weight_array, scale, zp, quantized_node)
 
             # Create and update new weight tensor
-            if zp_array.dtype == onnx_dtype_map["Float8"]:
+            if zp.data_type == onnx_dtype_map["Float8"]:
                 new_weight = _create_fp8_tensor(scaled, weight_name)
                 logger.debug(f"Converted {weight_name} to FP8")
             else:
@@ -1107,17 +1111,20 @@ def quantize_weights_to_int4(
         scale_shape = [*weight_shape[:-1], weight_shape[-1] // block_size]
         scale = scale.reshape(scale_shape)
         reshape_child_nodes = [n for n in graph.node if reshape_node.output[0] in n.input]
-        assert len(reshape_child_nodes) == 1, f"Expected exactly one transpose node for {node.name}"
+        assert len(reshape_child_nodes) == 1, f"Expected exactly one child node for {node.name}"
 
-        # Remove unnecessary Cast node
-        cast_node = reshape_child_nodes[0]
-        assert cast_node.op_type == "Cast", f"Expected Cast node for {node.name}"
-        nodes_to_remove.append(cast_node.name)
-        cast_child_nodes = [n for n in graph.node if cast_node.output[0] in n.input]
+        # Check if there's an optional Cast node between Reshape and Transpose/MatMul/Gemm
+        next_node = reshape_child_nodes[0]
+        if next_node.op_type == "Cast":
+            # Remove unnecessary Cast node
+            cast_node = next_node
+            nodes_to_remove.append(cast_node.name)
+            cast_child_nodes = [n for n in graph.node if cast_node.output[0] in n.input]
+            next_node = cast_child_nodes[0]
 
         # Transpose weights and scales if present
-        if cast_child_nodes[0].op_type == "Transpose":
-            transpose_node = cast_child_nodes[0]
+        if next_node.op_type == "Transpose":
+            transpose_node = next_node
             nodes_to_remove.append(transpose_node.name)
             assert transpose_node.op_type == "Transpose", f"Expected Transpose node for {node.name}"
             perm = None
@@ -1134,7 +1141,7 @@ def quantize_weights_to_int4(
             )
             matmul_node = transpose_child_nodes[0]
         else:
-            matmul_node = cast_child_nodes[0]
+            matmul_node = next_node
         assert matmul_node.op_type in ["MatMul", "Gemm"], (
             f"Expected MatMul or Gemm node for {node.name}"
         )
@@ -1184,21 +1191,6 @@ def quantize_weights_to_int4(
     new_nodes = [node for node in graph.node if node.name not in nodes_to_remove]
     del graph.node[:]
     graph.node.extend(new_nodes)
-
-    def is_fp32_cast(node: onnx.NodeProto) -> bool:
-        return any(
-            attr.name == "to" and attr.i == onnx.TensorProto.FLOAT for attr in node.attribute
-        )
-
-    # Change all Cast nodes that cast to float32 (TensorProto.FLOAT) to cast to float16 (TensorProto.FLOAT16)
-    for node in graph.node:
-        if node.op_type == "Cast":
-            # Skip Cast nodes that are part of normalization layers and outputs
-            if "norm/Cast" in node.name and is_fp32_cast(node):
-                continue
-            for attr in node.attribute:
-                if attr.name == "to" and attr.i == onnx.TensorProto.FLOAT:
-                    attr.i = onnx.TensorProto.FLOAT16
 
     # Cast bias to float16
     for node in graph.node:
@@ -1306,13 +1298,6 @@ def quantize_weights_to_mxfp8(
                 if attr.name == "output_dtype":
                     attr.i = onnx_dtype_map["Half"]
 
-    # set Cast to FP16
-    for node in graph.node:
-        if node.op_type == "Cast":
-            for attr in node.attribute:
-                if attr.name == "to" and attr.i == onnx.TensorProto.FLOAT:
-                    attr.i = onnx_dtype_map["Half"]
-
     # Currently only tanh approximation is supported for Gelu
     for node in gelu_nodes:
         for attr in node.attribute:
@@ -1332,7 +1317,6 @@ def replace_fp4qdq_with_2dq(
     w_f4: np.ndarray,
     sw_f32_per_tensor: np.ndarray,
     sw_f8_per_block: np.ndarray,
-    precision_dtype: str,
     block_size: int,
 ):
     """Replaces the given node in the ONNX graph with a subgraph consisting of two DequantizeLinear nodes.
@@ -1346,7 +1330,6 @@ def replace_fp4qdq_with_2dq(
         w_f4: NumPy array for w_f4.
         sw_f32_per_tensor: NumPy array for sw_f32_per_tensor.
         sw_f8_per_block: NumPy array for sw_f8_per_block.
-        precision_dtype: The precision of the weights.
         block_size: Block size used in block quantization.
     """
 
@@ -1406,39 +1389,39 @@ def replace_fp4qdq_with_2dq(
     _add_initializer(sw_f32_per_tensor_proto)
     _add_initializer(sw_f8_per_block_proto)
 
-    # Create DequantizeLinear_1 node: (sw_f8_per_block, sw_f32_per_tensor) -> sw_f16
-    sw_f16_name = weight_name + "_f16_scale"
+    # Create DequantizeLinear_1 node: (sw_f8_per_block, sw_f32_per_tensor) -> sw_f32
+    sw_f32_name = weight_name + "_f32_scale"
     dequant1 = onnx.helper.make_node(
         "DequantizeLinear",
         inputs=[sw_f8_per_block_proto.name, sw_f32_per_tensor_proto.name],
-        outputs=[sw_f16_name],
+        outputs=[sw_f32_name],
         name=weight_name + "_DequantizeLinear",
     )
 
-    # Create DequantizeLinear_2 node: (w_f4, sw_f16) -> w_16
-    w16_name = node.output[0]
+    # Create DequantizeLinear_2 node: (w_f4, sw_f32) -> w_32
+    w32_name = node.output[0]
     dequant2 = onnx.helper.make_node(
         "DequantizeLinear",
-        inputs=[w_f4_proto.name, sw_f16_name],
-        outputs=[w16_name],
+        inputs=[w_f4_proto.name, sw_f32_name],
+        outputs=[w32_name],
         name=weight_name + "_DequantizeLinear_1",
         axis=-1,
         block_size=block_size,
     )
 
-    # Add value_info for sw_f16
+    # Add value_info for sw_f32
     # Assuming sw_f16 has the same shape as sw_f8_per_block
-    sw_f16_type_proto = onnx.helper.make_tensor_type_proto(
-        elem_type=onnx_dtype_map[precision_dtype], shape=sw_f8_per_block.shape
+    sw_f32_type_proto = onnx.helper.make_tensor_type_proto(
+        elem_type=onnx_dtype_map["Float"], shape=sw_f8_per_block.shape
     )
-    sw_f16_value_info = onnx.helper.make_value_info(name=sw_f16_name, type_proto=sw_f16_type_proto)
+    sw_f16_value_info = onnx.helper.make_value_info(name=sw_f32_name, type_proto=sw_f32_type_proto)
     graph.value_info.append(sw_f16_value_info)
 
     # Change the data type of w16 (output of 2nd DQ) to model weight precision type
-    if w16_name in value_info_map:
-        value_info_map[w16_name].type.tensor_type.elem_type = onnx_dtype_map[precision_dtype]
+    if w32_name in value_info_map:
+        value_info_map[w32_name].type.tensor_type.elem_type = onnx_dtype_map["Float"]
     else:
-        raise ValueError(f"ValueInfo for {w16_name} not found.")
+        raise ValueError(f"ValueInfo for {w32_name} not found.")
 
     # Add the new nodes to the graph
     graph.node.extend([dequant1, dequant2])
@@ -1537,7 +1520,6 @@ def fp4qdq_to_2dq(onnx_model: onnx.ModelProto, verbose: bool = False) -> onnx.Mo
             w_f4,
             sw_f32_per_tensor,
             sw_f8_per_block,
-            precision_dtype,
             block_size,
         )
 
