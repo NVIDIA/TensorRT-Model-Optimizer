@@ -195,7 +195,9 @@ class ScoringCheckpointManager:
             # All ranks save their hook states
             if self.activation_hooks is not None:
                 try:
-                    from utils.activation_hooks.hooks import ActivationsHook
+                    from modelopt.torch._compress.activation_scoring.activation_hooks.hooks import (
+                        ActivationsHook,
+                    )
 
                     saved_path = ActivationsHook.save_hook_states(
                         self.activation_hooks, self.checkpoint_dir, self.runtime
@@ -252,7 +254,9 @@ class ScoringCheckpointManager:
         # All ranks save their final hook states
         if self.activation_hooks is not None:
             try:
-                from utils.activation_hooks.hooks import ActivationsHook
+                from modelopt.torch._compress.activation_scoring.activation_hooks.hooks import (
+                    ActivationsHook,
+                )
 
                 saved_path = ActivationsHook.save_hook_states(
                     self.activation_hooks, self.checkpoint_dir, self.runtime
