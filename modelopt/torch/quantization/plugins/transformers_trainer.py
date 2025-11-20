@@ -16,6 +16,7 @@
 """ModelOpt plugin for transformers Trainer."""
 
 import gc
+import json
 import os
 import types
 from dataclasses import dataclass, field
@@ -30,16 +31,17 @@ from modelopt.torch.distill.mode import _convert_for_kd
 from modelopt.torch.distill.plugins.huggingface import KDTrainer
 from modelopt.torch.opt.conversion import restore_from_modelopt_state
 from modelopt.torch.opt.plugins import ModelOptHFTrainer
-from modelopt.torch.quantization.config import QuantizeConfig
-from modelopt.torch.quantization.nn import TensorQuantizer
-from modelopt.torch.quantization.utils import (
+from modelopt.torch.utils import print_rank_0
+
+from ..config import QuantizeConfig
+from ..nn import TensorQuantizer
+from ..utils import (
     calibrate_with_adapters,
     disable_lora_quantizers_in_config,
     get_quantizer_state_dict,
     is_quantized,
     set_quantizer_state_dict,
 )
-from modelopt.torch.utils import print_rank_0
 
 # TODO: Enable documentation rendering for this class
 
@@ -146,7 +148,7 @@ class QATTrainer(ModelOptHFTrainer):
             self.model, "peft_config"
         ):
             # TODO: use get_peft_model here instead of add_adapter
-            self.model.add_adapter(self.args.lora_config, adapter_name="adapter")
+            self.model.add_adapter(self.args.lora_config)
             print_rank_0("Lora adapter added.")
 
         if hasattr(self.model, "peft_config") and self.quant_cfg is not None:
@@ -167,6 +169,10 @@ class QATTrainer(ModelOptHFTrainer):
             self._restore_modelopt_state_with_weights()
         elif is_quantized(self.model):
             self._save_modelopt_state_with_weights()
+
+        self._original_dtype = getattr(
+            getattr(self.model, "config", None), "dtype", None
+        ) or getattr(getattr(self.model, "config", None), "torch_dtype", None)
 
     def _save_modelopt_state_with_weights(self):
         """Save the modelopt weights for fsdp2 models."""
@@ -209,6 +215,9 @@ class QATTrainer(ModelOptHFTrainer):
             print_rank_0("Quantizing the model...")
             mtq.quantize(self.model, self.quant_cfg, forward_loop)  # type: ignore [arg-type]
 
+        # Save modelopt state
+        self._save_modelopt_state_with_weights()
+
         if getattr(self.quant_args, "compress", False):
             print_rank_0("Compressing model after calibration")
             mtq.compress(self.model)
@@ -216,7 +225,6 @@ class QATTrainer(ModelOptHFTrainer):
         # Force garbage collection to free up memory
         gc.collect()
 
-        self._save_modelopt_state_with_weights()
         torch.cuda.empty_cache()
 
         if self.accelerator.is_main_process:
@@ -254,26 +262,78 @@ class QATTrainer(ModelOptHFTrainer):
 
     def save_model(self, *args, **kwargs):
         """Save the quantized model."""
-        if (
-            (not self.is_in_train)
-            and self.is_fsdp_enabled
-            and self.accelerator.state.fsdp_plugin.state_dict_type != "FULL_STATE_DICT"
-        ):
-            print_rank_0("Setting state_dict_type to FULL_STATE_DICT for final checkpoint save.")
-            original_type = self.accelerator.state.fsdp_plugin.state_dict_type
-            self.accelerator.state.fsdp_plugin.set_state_dict_type("FULL_STATE_DICT")
-            outputs = super().save_model(*args, **kwargs)
-            if torch.distributed.is_initialized():
-                torch.distributed.barrier()
-            if mto.ModeloptStateManager.is_converted(self.accelerator.unwrap_model(self.model)):
+        if not self.is_in_train:
+            if (
+                self.is_fsdp_enabled
+                and self.accelerator.state.fsdp_plugin.state_dict_type != "FULL_STATE_DICT"
+            ):
                 print_rank_0(
-                    "Model saved. To restore, call mto.enable_huggingface_checkpointing() first before loading the "
-                    "model. See https://nvidia.github.io/TensorRT-Model-Optimizer/reference/generated/modelopt.torch.opt.plugins.huggingface.html#modelopt.torch.opt.plugins.huggingface.enable_huggingface_checkpointing"
+                    "Setting state_dict_type to FULL_STATE_DICT for final checkpoint save."
                 )
-            self.accelerator.state.fsdp_plugin.set_state_dict_type(original_type)
+                original_type = self.accelerator.state.fsdp_plugin.state_dict_type
+                self.accelerator.state.fsdp_plugin.set_state_dict_type("FULL_STATE_DICT")
+                outputs = super().save_model(*args, **kwargs)
+                if torch.distributed.is_initialized():
+                    torch.distributed.barrier()
+                if mto.ModeloptStateManager.is_converted(self.accelerator.unwrap_model(self.model)):
+                    print_rank_0(
+                        "Model saved. To restore, call mto.enable_huggingface_checkpointing() first before loading the "
+                        "model. See https://nvidia.github.io/TensorRT-Model-Optimizer/reference/generated/modelopt.torch.opt.plugins.huggingface.html#modelopt.torch.opt.plugins.huggingface.enable_huggingface_checkpointing"
+                    )
+                self.accelerator.state.fsdp_plugin.set_state_dict_type(original_type)
+            if self.args.should_save:
+                out_dir = args[0]
+                # FSDP may upcast parameter dtype to float32 during mixed-precision training,
+                # we convert it back to original dtype by updating `torch-dtype` in `config.json`
+                self._update_config_json_dtype(out_dir, str(self._original_dtype).split(".")[1])
         else:
             outputs = super().save_model(*args, **kwargs)
         return outputs
+
+    def _load_best_model(self, *args, **kwargs):
+        """Load the best model for final evaluation."""
+        is_lora = getattr(self.args, "lora", None)
+        if is_lora and not self.is_fsdp_enabled:
+            # Custom logic for loading best model with LoRA
+            # TODO: Remove once we migrate to using get_peft_model()
+            # This custom logic only loads best adapters. Ensure base model is frozen
+            assert all(
+                not param.requires_grad
+                for name, param in self.model.base_model.named_parameters()
+                if "base_layer" in name
+            ), "Some base_layer parameters are not frozen"
+
+            adapter_name = self.model.active_adapters()[0]
+            self.model.delete_adapter(adapter_name)
+            self.model.load_adapter(self.state.best_model_checkpoint, adapter_name)
+        else:
+            super()._load_best_model(*args, **kwargs)
+
+    def _update_config_json_dtype(self, output_dir: str, dtype_str: str | None) -> None:
+        """Rewrite <output_dir>/config.json 'dtype' (preferred) or 'torch_dtype' to dtype_str."""
+        cfg_path = os.path.join(output_dir, "config.json")
+        if not os.path.isfile(cfg_path):
+            print_rank_0(f"[warn] config.json not found under {output_dir}; skip dtype rewrite.")
+            return
+        try:
+            with open(cfg_path, encoding="utf-8") as f:
+                data = json.load(f)
+            # Prefer 'dtype', else fall back to 'torch_dtype'
+            key_to_update = (
+                "dtype" if "dtype" in data else ("torch_dtype" if "torch_dtype" in data else None)
+            )
+            if key_to_update is None:
+                print_rank_0(
+                    "[warn] Neither 'dtype' nor 'torch_dtype' present in config.json; skip dtype rewrite."
+                )
+                return
+            if data.get(key_to_update) != dtype_str:
+                data[key_to_update] = dtype_str
+                with open(cfg_path, "w", encoding="utf-8") as f:
+                    json.dump(data, f, ensure_ascii=False, indent=2)
+                print_rank_0(f'Updated config.json: {key_to_update} -> "{dtype_str}"')
+        except Exception as e:
+            print_rank_0(f"[warn] Failed to update dtype in config.json: {e}")
 
     def _patch_accelerate_for_fsdp2_fix(self):
         """Fixes for accelerate prepare.
@@ -337,7 +397,7 @@ class QADTrainer(QATTrainer, KDTrainer):
         if self.quant_cfg is not None and not is_quantized(self.model):
             self._quantize_model()
         if getattr(self.args, "lora_config", None) is not None:
-            self.model.add_adapter(self.args.lora_config, adapter_name="adapter")
+            self.model.add_adapter(self.args.lora_config)
             print_rank_0("Lora adapter added.")
         self._convert_to_distillation_model()
 

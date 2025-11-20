@@ -61,7 +61,7 @@ optional_deps = {
         "diffusers>=0.32.2",
         "huggingface_hub>=0.24.0",
         "peft>=0.17.0",
-        "transformers>=4.48,<5.0",  # Should match modelopt/torch/__init__.py and tox.ini
+        "transformers>=4.53,<5.0",  # Should match modelopt/torch/__init__.py and tox.ini
         "deepspeed>=0.9.6 ; platform_system != 'Darwin' and platform_system != 'Windows'",
     ],
     # linter tools
@@ -79,6 +79,7 @@ optional_deps = {
         "pytest-timeout",
         "timm",
         "torchvision",
+        "torch-geometric",
         "tox>4.18",
         "tox-current-env>=0.0.12",
     ],
@@ -104,6 +105,8 @@ optional_deps = {
         "fire",
         "hydra-core==1.3.2",
         "omegaconf==2.3.0",
+        "wandb~=0.17.5",
+        "lru-dict",
     ],
 }
 

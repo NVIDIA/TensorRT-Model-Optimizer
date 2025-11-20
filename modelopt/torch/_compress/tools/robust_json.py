@@ -14,6 +14,11 @@
 # limitations under the License.
 # mypy: ignore-errors
 
+"""
+Provides a robust JSON encoder that can handle various types of objects,
+including dataclasses, paths, enums, namespaces, and functions.
+"""
+
 import argparse
 import dataclasses
 import datetime
@@ -23,12 +28,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
-try:
-    from omegaconf import DictConfig, ListConfig, OmegaConf
-
-    OMEGACONF_AVAILABLE = True
-except ImportError:
-    OMEGACONF_AVAILABLE = False
+from omegaconf import DictConfig, ListConfig, OmegaConf
 
 
 class RobustJSONEncoder(json.JSONEncoder):
@@ -43,7 +43,7 @@ class RobustJSONEncoder(json.JSONEncoder):
             return vars(o)
         if type(o).__name__ == "dtype":
             return str(o)
-        if OMEGACONF_AVAILABLE and isinstance(o, (DictConfig, ListConfig)):
+        if isinstance(o, (DictConfig, ListConfig)):
             return OmegaConf.to_container(o, resolve=True)
         if inspect.isfunction(o) or inspect.ismethod(o):
             if o.__module__ == "__main__":

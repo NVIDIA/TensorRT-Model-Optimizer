@@ -21,7 +21,12 @@ and mapping setup between nodes, initializers, and value info. These utilities
 support the core functionality of model precision conversion.
 """
 
+import logging
+from collections import defaultdict
+
 import onnx
+
+from modelopt.onnx.utils import get_opset_version
 
 
 def setup_mappings(model: onnx.ModelProto) -> tuple[dict, dict, dict]:
@@ -115,3 +120,61 @@ def get_cast_to_type(cast_node: onnx.NodeProto) -> int:
         if attr.name == "to":
             return attr.i
     raise ValueError("Cast node does not have 'to' attribute")
+
+
+def get_op_types_not_supported_in_low_precision(
+    model: onnx.ModelProto,
+    min_opset: int,
+    low_precision_type: str = "float16",
+) -> list[str]:
+    """Get a list of ops not supported in low precision for the opset_version = max(model.opset, min_opset).
+
+    An op is considered to be supported if at least one of the inputs may be in low precision.
+    Ops where only some of the inputs may be in low precision are considered supported by this function
+    and may need special handling. See PrecisionConverter::_should_skip_low_precision_input_conversion.
+
+    Args:
+        model: ONNX model.
+        min_opset: Minimum opset version.
+        low_precision_type: Target precision to reduce to ('float16' or 'bfloat16').
+
+    Returns:
+        ops_without_support: List of ops not supported in low precision for the current opset version.
+    """
+    # Obtain the current model's opset version
+    opset_version = max(get_opset_version(model), min_opset)
+
+    # Get all ops precision support information
+    precision = "tensor(float16)" if low_precision_type == "float16" else "tensor(bfloat16)"
+    model_ops = {n.op_type for n in model.graph.node}
+    schemas_dict = defaultdict(dict)
+    for schema in onnx.defs.get_all_schemas_with_history():
+        if schema.name not in model_ops:
+            continue
+        float16_supported = False
+        for constr in schema.type_constraints:
+            if precision in constr.allowed_type_strs:
+                float16_supported = True
+                break
+        schemas_dict[schema.name].update({schema.since_version: float16_supported})
+
+    # Check that all ops are supported in low precision for the current opset version.
+    # Otherwise, exclude from conversion.
+    ops_without_support = {}
+    for op, schema in schemas_dict.items():
+        supported_opsets = [k for k, v in schema.items() if v]
+        if supported_opsets:
+            min_supported_opset = min(supported_opsets)
+            if min_supported_opset > opset_version:
+                ops_without_support[op] = min_supported_opset
+        else:
+            ops_without_support[op] = None
+
+    if ops_without_support:
+        logging.warning(
+            f"{len(ops_without_support)} ops are not supported in '{low_precision_type}' in opset {opset_version}, "
+            f"skipping those from conversion. Upgrade the model's opset version as follows to run them in low "
+            f" precision: {ops_without_support}."
+        )
+
+    return list(ops_without_support.keys())
