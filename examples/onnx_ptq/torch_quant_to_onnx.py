@@ -178,7 +178,7 @@ def get_model_input_shape(model):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Quantize timm models to MXFP8, NVFP4, INT4_AWQ, or use AUTO quantization"
+        description="Quantize timm models to FP8, MXFP8, INT8, NVFP4, INT4_AWQ, or use AUTO quantization"
     )
 
     # Model hyperparameters
@@ -192,12 +192,12 @@ def main():
         "--quantize_mode",
         choices=["fp8", "mxfp8", "int8", "nvfp4", "int4_awq", "auto"],
         default="mxfp8",
-        help="Type of quantization to apply (fp8, mxfp8, int8, nvfp4, int4_awq, auto)",
+        help="Type of quantization to apply. Default is MXFP8.",
     )
     parser.add_argument(
         "--onnx_save_path",
         required=True,
-        help="The path to save the ONNX model.",
+        help="The save path to save the ONNX model.",
         type=str,
     )
     parser.add_argument(
@@ -228,6 +228,13 @@ def main():
     parser.add_argument(
         "--auto_quantization_formats",
         nargs="+",
+        choices=[
+            "NVFP4_AWQ_LITE_CFG",
+            "FP8_DEFAULT_CFG",
+            "MXFP8_DEFAULT_CFG",
+            "INT8_DEFAULT_CFG",
+            "INT4_AWQ_CFG",
+        ],
         default=["NVFP4_AWQ_LITE_CFG", "FP8_DEFAULT_CFG"],
         help="Quantization formats to search from for auto mode (e.g., NVFP4_AWQ_LITE_CFG FP8_DEFAULT_CFG)",
     )
@@ -235,13 +242,13 @@ def main():
         "--effective_bits",
         type=float,
         default=4.8,
-        help="Target effective bits for auto quantization constraint",
+        help="Target effective bits for auto quantization constraint. Default is 4.8.",
     )
     parser.add_argument(
         "--num_score_steps",
         type=int,
         default=128,
-        help="Number of scoring steps for auto quantization",
+        help="Number of scoring steps for auto quantization. Default is 128.",
     )
 
     args = parser.parse_args()
