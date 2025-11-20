@@ -258,12 +258,18 @@ def restore_original_rope_scaling(config_data: dict, original_model_path: str) -
         if is_huggingface_model_id(original_model_path):
             # Try to fetch config from HuggingFace Hub
             raw_original_config = fetch_model_config(original_model_path)
+            if raw_original_config is None:
+                warnings.warn(
+                    f"Could not fetch original config from HuggingFace Hub: {original_model_path}"
+                )
         else:
             # Handle as local filesystem path
             original_config_file = Path(original_model_path) / "config.json"
             if original_config_file.exists():
                 with open(original_config_file) as f:
                     raw_original_config = json.load(f)
+            else:
+                warnings.warn(f"Original config file not found: {original_config_file}")
 
         # If we successfully got the original config, proceed with restoration
         if raw_original_config is not None:
@@ -275,22 +281,14 @@ def restore_original_rope_scaling(config_data: dict, original_model_path: str) -
                 and curr_rope.get("type") == "default"
                 and "rope_type" in curr_rope
             ):
-                print(f"Restoring original rope_scaling configuration from {original_model_path}")
+                warnings.warn(
+                    f"Restoring original rope_scaling configuration from {original_model_path}"
+                )
                 config_data["rope_scaling"] = raw_original_config["rope_scaling"]
 
                 # Also restore rope_scaling in text_config if it exists to maintain consistency
                 if "text_config" in config_data and "rope_scaling" in config_data["text_config"]:
                     config_data["text_config"]["rope_scaling"] = raw_original_config["rope_scaling"]
-        elif is_huggingface_model_id(original_model_path):
-            # Log that we couldn't find the original config
-            warnings.warn(
-                f"Could not fetch original config from HuggingFace Hub: {original_model_path}"
-            )
-        else:
-            # Only warn if the local path was expected to exist
-            original_config_file = Path(original_model_path) / "config.json"
-            if not original_config_file.exists():
-                warnings.warn(f"Original config file not found: {original_config_file}")
     except Exception as e:
         warnings.warn(f"Could not restore original rope_scaling configuration: {e}")
 
