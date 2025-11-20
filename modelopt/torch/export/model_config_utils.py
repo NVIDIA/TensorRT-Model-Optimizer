@@ -267,23 +267,19 @@ def restore_original_rope_scaling(config_data: dict, original_model_path: str) -
 
         # If we successfully got the original config, proceed with restoration
         if raw_original_config is not None:
-            # Check if rope_scaling was modified from mrope to default
+            # Check if rope_scaling was incorrectly modified from mrope to default by AutoConfig
+            orig_rope = raw_original_config.get("rope_scaling", {})
+            curr_rope = config_data.get("rope_scaling", {})
             if (
-                "rope_scaling" in raw_original_config
-                and "rope_scaling" in config_data
-                and raw_original_config["rope_scaling"].get("type") == "mrope"
-                and config_data["rope_scaling"].get("type") == "default"
-                and "rope_type" in config_data["rope_scaling"]
+                orig_rope.get("type") == "mrope"
+                and curr_rope.get("type") == "default"
+                and "rope_type" in curr_rope
             ):
                 print(f"Restoring original rope_scaling configuration from {original_model_path}")
                 config_data["rope_scaling"] = raw_original_config["rope_scaling"]
 
-                # Also restore rope_scaling in text_config if it exists
-                if (
-                    "text_config" in config_data
-                    and "rope_scaling" in config_data["text_config"]
-                    and config_data["text_config"]["rope_scaling"].get("type") == "default"
-                ):
+                # Also restore rope_scaling in text_config if it exists to maintain consistency
+                if "text_config" in config_data and "rope_scaling" in config_data["text_config"]:
                     config_data["text_config"]["rope_scaling"] = raw_original_config["rope_scaling"]
         elif is_huggingface_model_id(original_model_path):
             # Log that we couldn't find the original config
