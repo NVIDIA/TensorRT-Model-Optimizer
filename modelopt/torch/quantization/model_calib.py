@@ -241,6 +241,8 @@ def mse_calibrate(
 
                     if original_amax is not None:
                         quantizer._amax = original_amax
+                    else:
+                        delattr(quantizer, "_amax")
 
                     return xq
 
