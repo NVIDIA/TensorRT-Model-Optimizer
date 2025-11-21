@@ -552,10 +552,18 @@ def restore_from_modelopt_state(model: ModelLike, modelopt_state: dict[str, Any]
     )
 
     # apply restore entrypoints for each of the modes
+    to_remove = []
     for i, (m, config, metadata) in enumerate(manager.modes_with_states()):
         if i == 0:
             model = _check_init_modellike(model, m)
+        if m.skip_restore:
+            to_remove.append(i)
+            continue
         model = m.restore(model, config, metadata)
+
+    # remove modes that should be skipped during restore
+    for i in reversed(to_remove):
+        manager.state_dict().pop(i)
 
     # If the existing mode is empty, create an model instance from ModelLikeModule.
     if not manager.has_state and isinstance(model, ModelLikeModule):
