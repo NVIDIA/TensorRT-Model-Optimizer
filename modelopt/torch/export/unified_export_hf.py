@@ -475,7 +475,7 @@ def _export_hf_checkpoint(
     # Track if any layers are quantized to properly set exclude_modules
     fsdp_module_to_reshard = None
 
-    for _, sub_module in model.named_modules():
+    for name, sub_module in model.named_modules():
         # Optimization to perform resharding only once per decoder layer to avoid extra communication overhead
         if isinstance(sub_module, FSDPModule):
             # Every time we encounter a new FSDPModule, the previous decoder layer is fully processed.
@@ -491,6 +491,7 @@ def _export_hf_checkpoint(
             continue
 
         if get_quantization_format(sub_module) != QUANTIZATION_NONE:
+            print(f"debug name: {name}")
             if is_quantlinear(sub_module):
                 with fsdp2_aware_weight_update(model, sub_module, reshard=False):
                     _export_quantized_weight(sub_module, dtype)

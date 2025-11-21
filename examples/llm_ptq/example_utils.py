@@ -354,31 +354,38 @@ def get_model(
                     model_kwargs2.pop("trust_remote_code", None)
                 model_kwargs2["torch_dtype"] = torch_dtype
                 model_kwargs2.pop("max_memory", None)
-                model = from_config(hf_config, **model_kwargs2)
+                # model = AutoModelForCausalLM.from_pretrained(
+                #     ckpt_path,
+                #     torch_dtype=torch.bfloat16,
+                #     device_map=device_map,
+                #     local_files_only=True,
+                #     trust_remote_code=True
+                # )
 
-            max_memory = get_max_memory()
-            inferred_device_map = infer_auto_device_map(model, max_memory=max_memory)
+            # max_memory = get_max_memory()
+            # inferred_device_map = infer_auto_device_map(model, max_memory=max_memory)
 
-            on_cpu = "cpu" in inferred_device_map.values()
+            # on_cpu = "cpu" in inferred_device_map.values()
 
-            if on_cpu:
-                for _device in max_memory:
-                    if isinstance(_device, int):
-                        max_memory[_device] *= gpu_mem_percentage
+            # if on_cpu:
+            #     for _device in max_memory:
+            #         if isinstance(_device, int):
+            #             max_memory[_device] *= gpu_mem_percentage
 
-                print(
-                    "Model does not fit to the GPU mem. "
-                    f"We apply the following memory limit for calibration: \n{max_memory}\n"
-                    "If you hit GPU OOM issue, please adjust `gpu_mem_percentage` or "
-                    "reduce the calibration `batch_size` manually."
-                )
-                model_kwargs["max_memory"] = max_memory
+            #     print(
+            #         "Model does not fit to the GPU mem. "
+            #         f"We apply the following memory limit for calibration: \n{max_memory}\n"
+            #         "If you hit GPU OOM issue, please adjust `gpu_mem_percentage` or "
+            #         "reduce the calibration `batch_size` manually."
+            #     )
+            #     model_kwargs["max_memory"] = max_memory
 
-            model = auto_model_module.from_pretrained(
-                ckpt_path,
-                device_map=device_map,
-                **model_kwargs,
-            )
+            # model = auto_model_module.from_pretrained(
+            #     ckpt_path,
+            #     device_map=device_map,
+            #     **model_kwargs,
+            # )
+            model = AutoModelForCausalLM.from_pretrained(ckpt_path, torch_dtype="auto", device_map = "auto", local_files_only = True, trust_remote_code = True)
     model.eval()
 
     # If device_map was disabled (None), manually move model to target device
