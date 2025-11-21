@@ -54,4 +54,4 @@ def test_nested_model_save_restore(tmp_path, model_cls, teacher_model_type):
 
     tf_output_tester(model, model_test)
     # KD state is not saved and it should be empty
-    assert not mto.modelopt_state(model_test)["modelopt_state_dict"]
+    assert not mto.ModeloptStateManager(model_test).has_state

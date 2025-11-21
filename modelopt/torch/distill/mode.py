@@ -76,11 +76,6 @@ class KnowledgeDistillationModeDescriptor(ModeDescriptor):
         return _convert_for_kd
 
     @property
-    def skip_restore(self) -> bool:
-        """Whether the mode should be skipped entirely during ModelOpt state restore."""
-        return True
-
-    @property
     def restore(self) -> RestoreEntrypoint:
         """The mode's entrypoint for restoring a model."""
         raise NotImplementedError(f"{self.name} mode does not support restore.")
@@ -91,9 +86,9 @@ class KnowledgeDistillationModeDescriptor(ModeDescriptor):
         return _reset_kd_state_config
 
     @property
-    def update_for_save(self) -> UpdateEntrypoint:
-        """The mode's entrypoint for updating the models state before saving."""
-        return _reset_kd_state_config
+    def save_mode_in_state(self) -> bool:
+        """Whether the mode should be saved into the modelopt state."""
+        return False
 
 
 @DistillModeRegistry.register_mode
@@ -124,14 +119,14 @@ class ExportStudentModeDescriptor(ModeDescriptor):
         return _export_student
 
     @property
-    def skip_restore(self) -> bool:
-        """Whether the mode should be skipped entirely during ModelOpt state restore."""
-        return True
-
-    @property
     def restore(self) -> RestoreEntrypoint:
         """The mode's entrypoint for restoring a model."""
         raise NotImplementedError(f"{self.name} mode does not support restore.")
+
+    @property
+    def save_mode_in_state(self) -> bool:
+        """Whether the mode should be saved into the modelopt state."""
+        return False
 
 
 def _convert_for_kd(model: nn.Module, config: KDLossConfig) -> ConvertReturnType:

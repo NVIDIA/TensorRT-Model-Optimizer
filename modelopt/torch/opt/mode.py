@@ -243,15 +243,15 @@ class ModeDescriptor(ABC):
         return False
 
     @property
-    def skip_restore(self) -> bool:
-        """Whether the mode should be skipped entirely during ModelOpt state restore.
+    def save_mode_in_state(self) -> bool:
+        """Whether the mode should be saved into the modelopt state.
 
         This is useful if the mode is intended to be manually re-applied every time it's used.
 
         Returns:
-            False
+            True
         """
-        return False
+        return True
 
     def assert_compatibility_as_next_mode_of(self, other_mode: "ModeDescriptor | str") -> None:
         """Assert that this mode is compatible as a next mode of the other mode."""
