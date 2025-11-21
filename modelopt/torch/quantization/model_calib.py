@@ -347,7 +347,9 @@ _ENABLE_FOLDING_PQS_TO_WEIGHTS = True
 def _apply_weight_pre_quant_scale(linear, pre_quant_scale):
     if _ENABLE_FOLDING_PQS_TO_WEIGHTS:
         linear.weight.data.copy_(
-            (linear.weight * pre_quant_scale.squeeze()[None, :]).to(linear.weight.dtype)
+            (linear.weight * pre_quant_scale.to(linear.weight.device).squeeze()[None, :]).to(
+                linear.weight.dtype
+            )
         )
     else:
         linear.weight_quantizer._enable_pre_quant_scale = True
@@ -396,7 +398,9 @@ def apply_pre_quant_scale_and_smooth(
         _amax_for_smoothing = linear.input_quantizer._amax_for_smoothing.to(
             device=device, dtype=dtype
         )
-        linear.input_quantizer.amax = (_amax_for_smoothing * pre_quant_scale).amax().to(dtype)
+        linear.input_quantizer.amax = (
+            (_amax_for_smoothing * pre_quant_scale.to(device)).amax().to(dtype)
+        )
 
         if is_quantized_column_parallel_linear(linear) or is_quantized_row_parallel_linear(linear):
             linear.input_quantizer.sync_amax_across_distributed_group(
@@ -603,7 +607,10 @@ def awq_lite(
 
     def get_scale(x_max, w_max, alpha, tensor_parallel_group=None):
         scales = (
-            (x_max.pow(alpha) / (w_max.pow(1 - alpha) + torch.finfo(torch.float32).tiny))
+            (
+                x_max.pow(alpha)
+                / (w_max.to(x_max.device).pow(1 - alpha) + torch.finfo(torch.float32).tiny)
+            )
             .clamp(min=1e-4, max=1e4)
             .view(-1)
         )
@@ -617,7 +624,7 @@ def awq_lite(
         out_actual = out_actual[0] if isinstance(out_actual, tuple) else out_actual
         out = out[0] if isinstance(out, tuple) else out
         loss = (out - out_actual).float().pow(2).mean()
-        self.awq_lite.loss[alpha] += loss
+        self.awq_lite.loss[alpha] += loss.to(self.awq_lite.loss[alpha].device)
 
     def update_best_params(self):
         if not self.awq_lite.is_enabled:

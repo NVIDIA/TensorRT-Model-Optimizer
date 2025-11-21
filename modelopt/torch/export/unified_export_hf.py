@@ -60,6 +60,7 @@ from .model_utils import get_language_model_from_vl, is_multimodal_model
 from .plugins import export_spec_ckpt_config, export_spec_ckpt_state_dict, spec_opt_only
 from .quant_utils import (
     fuse_prequant_layernorm,
+    fuse_prequant_to_linear,
     get_activation_scaling_factor,
     get_quant_config,
     get_quantization_format,
@@ -106,6 +107,10 @@ def requantize_resmooth_fused_llm_layers(model: torch.nn.Module):
 
     fused_linears = {}
     module_names = set()
+
+    # Fuse pre_quant_scale to the linear weights if possible
+    if quantization_format is not None and "nvfp4_awq" in quantization_format.lower():
+        fuse_prequant_to_linear(model)
 
     for name, module in model.named_modules():
         module_names.add(name)
@@ -155,11 +160,12 @@ def requantize_resmooth_fused_llm_layers(model: torch.nn.Module):
                 model(fake_input, decoder_input_ids=decoder_fake_input)
             elif is_vl_model and "nemotron" in model_type:
                 # For Nemotron VL models, try to run optimization on just the language model part
-                language_model, _ = get_language_model_from_vl(model)
+                language_model_lineage = get_language_model_from_vl(model)
 
-                if language_model is not None:
+                if language_model_lineage is not None:
                     # Run optimization on just the language model with the same input format as regular LLMs
                     # Use the same fake_input tensor that regular LLMs use
+                    language_model = language_model_lineage[-1]
                     print(
                         f"Running optimization on language model with fake_input shape: {fake_input.shape}"
                     )
@@ -365,9 +371,7 @@ def _export_quantized_weight(
 
 
 def _export_hf_checkpoint(
-    model: nn.Module,
-    dtype: torch.dtype | None = None,
-    **kwargs,
+    model: nn.Module, dtype: torch.dtype | None = None, is_modelopt_qlora: bool = False, **kwargs
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Exports the torch model to the packed checkpoint with original HF naming.
 
@@ -458,7 +462,7 @@ def _export_hf_checkpoint(
     except ImportError:
         warnings.warn("accelerate is not installed, hooks will not be removed")
 
-    quant_config = get_quant_config(model)
+    quant_config = get_quant_config(model, is_modelopt_qlora=is_modelopt_qlora)
 
     kv_cache_max_bound = 0
     kv_cache_format = quant_config["quantization"]["kv_cache_quant_algo"]
@@ -474,7 +478,6 @@ def _export_hf_checkpoint(
         kv_cache_max_bound = cache_bound_mapping.get(kv_cache_format)
 
     # Track if any layers are quantized to properly set exclude_modules
-    has_quantized_layers = False
     fsdp_module_to_reshard = None
 
     for _, sub_module in model.named_modules():
@@ -488,8 +491,11 @@ def _export_hf_checkpoint(
 
             fsdp_module_to_reshard = sub_module
 
+        # We skip QuantLoraLinear module for modelopt QLoRA
+        if is_modelopt_qlora and (hasattr(sub_module, "base_layer")):
+            continue
+
         if get_quantization_format(sub_module) != QUANTIZATION_NONE:
-            has_quantized_layers = True
             if is_quantlinear(sub_module):
                 with fsdp2_aware_weight_update(model, sub_module, reshard=False):
                     _export_quantized_weight(sub_module, dtype)
@@ -520,12 +526,8 @@ def _export_hf_checkpoint(
         quantized_state_dict = model.state_dict()
 
     quantized_state_dict = postprocess_state_dict(
-        quantized_state_dict, kv_cache_max_bound, kv_cache_format
+        quantized_state_dict, kv_cache_max_bound, kv_cache_format, is_modelopt_qlora
     )
-
-    # Check if any layers are quantized
-    if has_quantized_layers:
-        quant_config["quantization"].setdefault("exclude_modules", []).append("lm_head")
 
     return quantized_state_dict, quant_config
 

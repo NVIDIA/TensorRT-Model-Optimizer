@@ -29,8 +29,8 @@ from _test_utils.torch.megatron.utils import (
     run_mcore_inference_with_dummy_input,
 )
 from _test_utils.torch.misc import set_seed
+from megatron.core.models.common.embeddings.language_model_embedding import LanguageModelEmbedding
 from megatron.core.parallel_state import destroy_model_parallel
-from megatron.core.tensor_parallel.layers import VocabParallelEmbedding
 from megatron.core.transformer.attention import SelfAttention
 from megatron.core.transformer.identity_op import IdentityOp
 from megatron.core.transformer.mlp import MLP
@@ -41,6 +41,8 @@ from modelopt.torch.nas.conversion import export_searchspace
 from modelopt.torch.nas.modules import DynamicModuleList
 from modelopt.torch.nas.plugins.megatron import (
     _DynamicColumnParallelLinear,
+    _DynamicEmbedding,
+    _DynamicLanguageModelEmbedding,
     _DynamicMCoreLanguageModel,
     _DynamicMLP,
     _DynamicMoELayer,
@@ -51,7 +53,6 @@ from modelopt.torch.nas.plugins.megatron import (
     _DynamicSequentialMLP,
     _DynamicTopKRouter,
     _DynamicTransformerLayer,
-    _DynamicVocabParallelEmbedding,
     expand_head_indices,
 )
 from modelopt.torch.opt.utils import named_dynamic_modules, search_space_size
@@ -92,8 +93,9 @@ def _test_gpt_search_space(
 
     assert isinstance(model, _DynamicMCoreLanguageModel)
     for m in model.modules():
-        if isinstance(m, VocabParallelEmbedding):
-            assert isinstance(m, _DynamicVocabParallelEmbedding)
+        if isinstance(m, LanguageModelEmbedding):
+            assert isinstance(m, _DynamicLanguageModelEmbedding)
+            assert isinstance(m.word_embeddings, _DynamicEmbedding)
         elif isinstance(m, TransformerLayer):
             assert isinstance(m, _DynamicTransformerLayer)
         elif isinstance(m, MLP):
@@ -392,6 +394,7 @@ def _test_gpt_moe_parameter_sorting(rank, size):
         num_moe_experts=num_moe_experts,
         moe_ffn_hidden_size=moe_ffn_hidden_size,
         moe_shared_expert_intermediate_size=moe_shared_expert_intermediate_size,
+        bf16=False,
     ).cuda()
 
     # Randomize layernorm weights instead of all zeros or ones
@@ -425,7 +428,7 @@ def _test_gpt_moe_parameter_sorting(rank, size):
     y2 = run_mcore_inference(model, prompt_tokens)
 
     # check if the inference results after sorting is the same
-    compare_outputs(y1, y2, rtol=1e-5, atol=1e-2)
+    compare_outputs(y1, y2, rtol=1e-5, atol=1e-3)
 
 
 def test_gpt_moe_parameter_sorting(need_2_gpus):

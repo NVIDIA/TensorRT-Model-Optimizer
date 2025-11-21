@@ -1,19 +1,30 @@
 Model Optimizer Changelog (Linux)
 =================================
 
-0.40 (2025-12-xx)
+0.40 (2025-12-11)
 ^^^^^^^^^^^^^^^^^
 
 **Bug Fixes**
 
 - Fix a bug in FastNAS pruning (computer vision models) where the model parameters were sorted twice messing up the ordering.
+- Fix Q/DQ/Cast node placements in 'FP32 required' tensors in custom ops in the ONNX quantization workflow.
 
 **New Features**
 
-- Add MoE (e.g. Qwen3-30B-A3B) pruning support for ``num_moe_experts``, ``moe_ffn_hidden_size`` and ``moe_shared_expert_intermediate_size`` parameters in Minitron pruning (``mcore_minitron``).
+- Add MoE (e.g. Qwen3-30B-A3B, gpt-oss-20b) pruning support for ``num_moe_experts``, ``moe_ffn_hidden_size`` and ``moe_shared_expert_intermediate_size`` parameters in Minitron pruning (``mcore_minitron``).
 - Add ``specdec_bench`` example to benchmark speculative decoding performance. See `examples/specdec_bench/README.md <https://github.com/NVIDIA/TensorRT-Model-Optimizer/tree/main/examples/specdec_bench#speculative-decoding-benchmark>`_ for more details.
 - Add FP8/NVFP4 KV cache quantization support for Megatron Core models.
+- Add flag ``trt_plugins_precision`` in ONNX autocast to indicate custom ops precision. This is similar to the flag already existing in the quantization workflow.
+- Add support for PyTorch Geometric quantization.
 - Add per tensor and per channel MSE calibrator support.
+
+**Documentation**
+
+- Deprecate ``examples/megatron-lm`` in favor of more detailed documentation in `Megatron-LM/examples/post_training/modelopt <https://github.com/NVIDIA/Megatron-LM/tree/main/examples/post_training/modelopt>`_.
+
+**Misc**
+
+- Bump minimum recommended transformers version to 4.53.
 
 0.39 (2025-11-11)
 ^^^^^^^^^^^^^^^^^
@@ -36,10 +47,13 @@ Model Optimizer Changelog (Linux)
 - Add support for ``torch.compile`` and benchmarking in ``examples/diffusers/quantization/diffusion_trt.py``.
 - Enabled native Modelopt quantization support for FP8 and NVFP4 formats in SGLang. See `SGLang quantization documentation <https://github.com/sgl-project/sglang/blob/main/docs/advanced_features/quantization.md#using-nvidia-modelopt>`_ for more details.
 - Added modelopt quantized checkpoints in vLLM/SGLang CI/CD pipelines (PRs are under review).
+- Add support for exporting QLoRA checkpoint fintuned using ModelOpt.
+- Update NVFP4 AWQ checkpoint export. It now fuses scaling factors of o_proj and down_proj layers into the model when possible to facilitate deployment.
 
 **Documentation**
 
 - Add general guidelines for Minitron pruning and distillation. See `examples/pruning/README.md <https://github.com/NVIDIA/TensorRT-Model-Optimizer/tree/main/examples/pruning#pruning-guidelines>`_ for more details.
+- Added example for exporting QLoRA checkpoint for vLLM deployment. Refer to `examples/llm_qat/README.md <https://github.com/NVIDIA/TensorRT-Model-Optimizer/blob/79ef31bc7269ba4da0cfab446da5b64509cbfcef/examples/llm_qat/README.md#qlora-deployment>`_ for more details
 
 0.37 (2025-10-08)
 ^^^^^^^^^^^^^^^^^
@@ -58,7 +72,7 @@ Model Optimizer Changelog (Linux)
 - Upgrade TensorRT-LLM dependency to 1.1.0rc2.
 - Support Phi-4-multimodal and Qwen2.5-VL quantized HF checkpoint export in ``examples/vlm_ptq``.
 - Support storing and restoring Minitron pruning activations and scores for re-pruning without running the forward loop again.
-- Add Minitron pruning example for Megatron-LM framework. See ``examples/megatron-lm`` for more details.
+- Add Minitron pruning example for Megatron-LM framework. See `Megatron-LM/examples/post_training/modelopt <https://github.com/NVIDIA/Megatron-LM/tree/main/examples/post_training/modelopt>`_ for more details.
 
 0.35 (2025-09-04)
 ^^^^^^^^^^^^^^^^^

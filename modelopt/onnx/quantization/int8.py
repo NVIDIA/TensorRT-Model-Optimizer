@@ -120,6 +120,7 @@ def quantize(
     op_types_to_quantize: list[str] | None = None,
     op_types_to_exclude: list[str] | None = None,
     op_types_to_exclude_fp16: list[str] | None = None,
+    custom_ops_to_cast_fp32: dict | None = None,
     nodes_to_quantize: list[str] | None = None,
     nodes_to_exclude: list[str] | None = None,
     use_external_data_format: bool = False,
@@ -285,6 +286,7 @@ def quantize(
             onnx_model,
             keep_io_types=not direct_io_types,
             op_block_list=op_types_to_exclude_fp16 or [],
+            tensor_block_dict=custom_ops_to_cast_fp32 or {},
             low_precision_type=high_precision_dtype,
             trt_plugins=trt_extra_plugin_lib_paths,
         )

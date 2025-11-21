@@ -6,7 +6,7 @@ Pruning can involve removal (prune) of Linear and Conv layers, and Transformer a
 
 This section focuses on applying Model Optimizer's state-of-the-art complementary pruning modes to enable you to search for the best subnet architecture from your provided base model:
 
-1. [Minitron](https://arxiv.org/pdf/2408.11796): A pruning method developed by NVIDIA Research for pruning GPT, Mamba and Hybrid Transformer Mamba models in NVIDIA NeMo or Megatron-LM framework. It uses the activation magnitudes to prune the embedding hidden size; mlp ffn hidden size; transformer attention heads and GQA query groups; mamba heads and head dimension; MoE number of experts, ffn hidden size, and shared expert intermediate size; and number of layers of the model.
+1. [Minitron](https://arxiv.org/pdf/2408.11796): A pruning method developed by NVIDIA Research for pruning GPT (and later extended to Mamba, MoE, and Hybrid Transformer Mamba) models in NVIDIA Megatron-LM or NeMo framework. It uses the activation magnitudes to prune the embedding hidden size; mlp ffn hidden size; transformer attention heads and GQA query groups; mamba heads and head dimension; MoE number of experts, ffn hidden size, and shared expert intermediate size; and number of layers of the model.
 1. FastNAS: A pruning method recommended for Computer Vision models. Given a pretrained model, FastNAS finds the subnet which maximizes the score function while meeting the given constraints.
 1. GradNAS: A light-weight pruning method recommended for language models like Hugging Face BERT, GPT-J. It uses the gradient information to prune the model's linear layers and attention heads to meet the given constraints.
 
@@ -25,7 +25,7 @@ This section focuses on applying Model Optimizer's state-of-the-art complementar
 
 ## Pre-Requisites
 
-For Minitron pruning for Megatron-LM / NeMo models, use the NeMo container (e.g., `nvcr.io/nvidia/nemo:25.07`) which has all the dependencies installed.
+For Minitron pruning for Megatron-LM / NeMo models, use the NeMo container (e.g., `nvcr.io/nvidia/nemo:25.09`) which has all the dependencies installed.
 
 For FastNAS pruning for PyTorch Computer Vision models, no additional dependencies are required.
 
@@ -37,7 +37,7 @@ As part of the pruning process, you will need to set up the training and/or vali
 
 To prune your model, you can simply call the `mtp.prune` API and save the pruned model. If the model is pruned using FastNAS or GradNAS, you need to use `mto.save` and `mto.restore` to save and restore the pruned model; while for Minitron pruning, you can use your standard saving and loading functions since it is a homogeneous pruning.
 
-Please see an example of Minitron pruning for Megatron-Core GPT model below (for other algorithms, please refer to the examples below).
+Please see an example snippet of Minitron pruning for Megatron-Core GPT model below (for other algorithms, please refer to the examples below).
 
 ```python
 import modelopt.torch.prune as mtp
@@ -89,7 +89,7 @@ If your model parameters are already sorted, you can skip the sorting step by se
 
 | **Algorithm** | **Model** | **Pruning Constraints** |
 | :---: | :---: | :---: |
-| Minitron | Megatron-core / NeMo based GPT / Mamba / MoE / Hybrid Models<sup>1</sup> | Export config with width (`hidden_size`, `ffn_hidden_size`, `num_attention_heads`, `num_query_groups`, `mamba_num_heads`, `mamba_head_dim`, `num_moe_experts`, `moe_ffn_hidden_size`, `moe_shared_expert_intermediate_size`) and/or depth (`num_layers`) values |
+| Minitron | Megatron-core / NeMo based GPT / Mamba / MoE / Hybrid LLM Models<sup>1</sup> | Export config with width (`hidden_size`, `ffn_hidden_size`, `num_attention_heads`, `num_query_groups`, `mamba_num_heads`, `mamba_head_dim`, `num_moe_experts`, `moe_ffn_hidden_size`, `moe_shared_expert_intermediate_size`) and/or depth (`num_layers`) values |
 | FastNAS | Computer Vision models | flops, parameters |
 | GradNAS | HuggingFace BERT, GPT-J | flops, parameters |
 
@@ -177,7 +177,8 @@ After pruning, distillation is required to recover model accuracy. Below are rec
 
 ### Minitron Pruning for Megatron-LM / NeMo Framework LLMs (e.g. Qwen 3, Nemotron Nano)
 
-Checkout the Minitron pruning example for the [Megatron-LM Framework](../megatron-lm/README.md#-pruning) and [NeMo Framework](https://docs.nvidia.com/nemo-framework/user-guide/latest/model-optimization/pruning/pruning.html) which showcases the usage of the powerful Minitron pruning algorithm developed by NVIDIA Research for pruning LLMs like Llama 3.1 8B, Qwen 3 8B, Nemotron Nano 12B v2, etc.
+Checkout the Minitron pruning example for the [Megatron-LM Framework](https://github.com/NVIDIA/Megatron-LM/tree/main/examples/post_training/modelopt#-pruning) or [NeMo Framework](https://docs.nvidia.com/nemo-framework/user-guide/latest/model-optimization/pruning/pruning.html) which showcases the usage of the powerful Minitron pruning algorithm developed by NVIDIA Research for pruning LLMs like Llama 3.1 8B, Qwen 3 8B, Nemotron Nano 12B v2, etc.
+Both frameworks support importing from a Hugging Face pretrained checkpoint.
 
 You can also look at the NeMo tutorial notebooks [here](https://github.com/NVIDIA-NeMo/NeMo/tree/main/tutorials/llm/qwen/pruning-distillation) which showcase the usage of Minitron pruning followed by distillation for Qwen 3 8B step-by-step in NeMo framework. Hugging Face models can also be converted to NeMo format and used subsequently as shown in the tutorial.
 
@@ -205,7 +206,6 @@ with distillation and quantization. The example also demonstrates how to save an
 
 - 📅 [Roadmap](https://github.com/NVIDIA/TensorRT-Model-Optimizer/issues/146)
 - 📖 [Documentation](https://nvidia.github.io/TensorRT-Model-Optimizer)
-- 🎯 [Benchmarks](../benchmark.md)
 - 💡 [Release Notes](https://nvidia.github.io/TensorRT-Model-Optimizer/reference/0_changelog.html)
 - 🐛 [File a bug](https://github.com/NVIDIA/TensorRT-Model-Optimizer/issues/new?template=1_bug_report.md)
 - ✨ [File a Feature Request](https://github.com/NVIDIA/TensorRT-Model-Optimizer/issues/new?template=2_feature_request.md)

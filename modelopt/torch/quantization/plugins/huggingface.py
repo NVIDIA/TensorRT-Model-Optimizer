@@ -124,8 +124,6 @@ class _QuantAttention(QuantModule):
         # In addition, the new attention interface is not available for some models such as T5
         # Hence lets do a crude check here to see if the attention module is using the new_attention_interface
         # This is not foolproof but should work for most cases
-        if transformers.__version__ < "4.48.0":
-            return False
         module = inspect.getmodule(attn)
         return getattr(module, "ALL_ATTENTION_FUNCTIONS", None) is not None
 
@@ -741,8 +739,16 @@ def setup_model_for_gradient_checkpointing(model: nn.Module):
         model.config.use_cache = use_cache
 
 
-AutoQuantizeSearcher.register_gradient_checkpointing_enable_context(
-    _is_supported_hf_model, setup_model_for_gradient_checkpointing
+def _is_param_grad_enabled_for_auto_quantize(pname, model):
+    # Enable grad for embedding layers to propagate gradients through the model,
+    # allowing each layer to compute its input gradients during the backward pass.
+    return "embed" in pname
+
+
+AutoQuantizeSearcher.register_custom_support(
+    _is_supported_hf_model,
+    setup_model_for_gradient_checkpointing,
+    _is_param_grad_enabled_for_auto_quantize,
 )
 
 CUSTOM_MODEL_PLUGINS.update(

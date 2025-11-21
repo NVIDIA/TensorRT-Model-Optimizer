@@ -46,6 +46,7 @@ default_eagle_config = {
     "eagle_aux_hidden_state_layer_ids": [],
     "use_mtp_layernorm": False,
     "parallel_draft_step": 1,
+    "parallel_draft_heads_num_layers": 1,
     "has_lm_head": False,
     "head_dim": 128,
 }
