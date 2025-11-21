@@ -89,3 +89,4 @@ torch.distributed.barrier()
 
 1. AWQ is not yet supported in vLLM.
 2. PTQ/QAT checkpoint doesn't work with KV Cache quantization enabled.
+3. Mixed precision checkpoint doesn't work currently.

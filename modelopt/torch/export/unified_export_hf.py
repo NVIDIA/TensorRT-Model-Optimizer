@@ -603,6 +603,8 @@ def export_hf_checkpoint(
         dtype: the weights data type to export the unquantized layers or the default model data type if None.
         export_dir: the target export path.
         save_modelopt_state: whether to save the modelopt state_dict.
+        export_bf16_weights_amax: whether to export the bf16 weights and amax values separately. This can be used for
+                                  vLLM fakequant serving.
     """
     export_dir = Path(export_dir)
     export_dir.mkdir(parents=True, exist_ok=True)
