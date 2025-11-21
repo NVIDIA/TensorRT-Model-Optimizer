@@ -133,7 +133,11 @@ INT8_CUSTOM_QUANT_TEST_CFG = {
         ([None, mtq.INT8_SMOOTHQUANT_CFG], 8.0, 11.0),
     ],
 )
-def test_auto_quantize(model_cls, search_formats, min_bits, search_bits):
+@pytest.mark.parametrize(
+    "method",
+    ["gradient", "kl_div"],
+)
+def test_auto_quantize(model_cls, search_formats, min_bits, search_bits, method):
     model = model_cls()
 
     def loss_func(output):
@@ -149,6 +153,7 @@ def test_auto_quantize(model_cls, search_formats, min_bits, search_bits):
         num_calib_steps=2,
         num_score_steps=2,
         verbose=True,
+        method=method,
     )
     assert isinstance(search_history, dict)
     assert search_history["best"]["is_satisfied"]
