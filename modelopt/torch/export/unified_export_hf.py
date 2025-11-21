@@ -33,11 +33,7 @@ from torch.distributed.fsdp import FSDPModule
 from modelopt.torch.quantization import set_quantizer_by_cfg_context
 from modelopt.torch.quantization.nn import SequentialQuantizer, TensorQuantizer
 from modelopt.torch.quantization.qtensor import NVFP4QTensor
-from modelopt.torch.quantization.utils import (
-    fsdp2_aware_weight_update,
-    get_quantizer_state_dict,
-    quantizer_attr_names,
-)
+from modelopt.torch.quantization.utils import fsdp2_aware_weight_update, quantizer_attr_names
 
 from .convert_hf_config import convert_hf_quant_config_format
 from .layer_utils import (
@@ -63,6 +59,7 @@ from .model_config import (
 )
 from .model_utils import get_language_model_from_vl, is_multimodal_model
 from .plugins import export_spec_ckpt_config, export_spec_ckpt_state_dict, spec_opt_only
+from .plugins.vllm_fakequant import export_hf_vllm_fq_checkpoint
 from .quant_utils import (
     fuse_prequant_layernorm,
     fuse_prequant_to_linear,
@@ -557,44 +554,12 @@ def _export_hf_checkpoint(
     return quantized_state_dict, quant_config
 
 
-def _export_hf_bf16_weights_amax(
-    model: nn.Module,
-) -> tuple[dict[str, torch.Tensor], dict[str, Any]]:
-    """Exports the torch model weights and amax values separately.
-
-    This function:
-    1. Extracts amax values for calibration
-    2. Deletes all quantizer parameters from state dict to store only weights in original dtype
-
-    Args:
-        model: The quantized model to export
-
-    Returns:
-        post_state_dict: Dict containing quantized weights
-        amax_dict: Dict containing amax values
-    """
-    amax_dict = {
-        name + "._amax": param["_amax"].detach().clone().cpu()
-        for name, param in get_quantizer_state_dict(model).items()
-        if "_amax" in param
-    }
-
-    # remove quantizer from model
-    for name, module in model.named_modules():
-        if is_quantlinear(module):
-            delattr(module, "weight_quantizer")
-            delattr(module, "input_quantizer")
-            delattr(module, "output_quantizer")
-            module.export()
-    return model.state_dict(), amax_dict
-
-
 def export_hf_checkpoint(
     model: nn.Module,
     dtype: torch.dtype | None = None,
     export_dir: Path | str = tempfile.gettempdir(),
     save_modelopt_state: bool = False,
-    export_bf16_weights_amax: bool = False,
+    export_vllm_fq_weights_qstate: bool = False,
 ):
     """Exports the torch model to unified checkpoint and saves to export_dir.
 
@@ -603,8 +568,8 @@ def export_hf_checkpoint(
         dtype: the weights data type to export the unquantized layers or the default model data type if None.
         export_dir: the target export path.
         save_modelopt_state: whether to save the modelopt state_dict.
-        export_bf16_weights_amax: whether to export the bf16 weights and amax values separately. This can be used for
-                                  vLLM fakequant serving.
+        export_vllm_fq_weights_qstate: whether to export the weights and quantization state separately for vLLM
+        fakequant serving.
     """
     export_dir = Path(export_dir)
     export_dir.mkdir(parents=True, exist_ok=True)
@@ -618,15 +583,14 @@ def export_hf_checkpoint(
         return
 
     try:
-        if export_bf16_weights_amax:
-            post_state_dict, amax_dict = _export_hf_bf16_weights_amax(model)
+        if export_vllm_fq_weights_qstate:
+            post_state_dict = export_hf_vllm_fq_checkpoint(model, export_dir)
             hf_quant_config = None
-            torch.save(amax_dict, f"{export_dir}/quant_amax.pth")
         else:
             post_state_dict, hf_quant_config = _export_hf_checkpoint(model, dtype)
 
         if hf_quant_config is not None:
-            # Save hf_quant_config.json for backward compatibility
+            # Save hf_quant_config.json for\ backward compatibility
             with open(f"{export_dir}/hf_quant_config.json", "w") as file:
                 json.dump(hf_quant_config, file, indent=4)
 

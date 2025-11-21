@@ -35,7 +35,6 @@ from safetensors.torch import safe_open, save_file
 from tqdm import tqdm
 
 from modelopt import __version__
-from modelopt.torch.quantization.utils import get_quantizer_state_dict
 from modelopt.torch.utils import import_plugin
 
 from .model_config import (
@@ -49,6 +48,10 @@ from .model_config import (
 from .plugins.mcore_common import all_mcore_hf_export_mapping
 from .plugins.mcore_custom import CustomModuleMapping, save_safetensors
 from .plugins.megatron_importer import GPTModelImporter
+from .plugins.vllm_fakequant import (
+    gather_mcore_vllm_fq_quantized_state_dict,
+    get_mcore_vllm_fq_quantized_state,
+)
 from .quant_utils import (
     get_activation_scaling_factor,
     get_kv_cache_dtype,
@@ -116,23 +119,21 @@ def get_kv_cache_scaling_factor(kv_module: nn.Module) -> torch.Tensor:
 def get_quantized_state(
     module: torch.nn.Module,
     dtype: torch.dtype = torch.float16,
-    export_bf16_weights_amax: bool = False,
+    export_vllm_fq_weights_qstate: bool = False,
 ) -> tuple[dict[str, torch.Tensor], str, int]:
     """Return a state_dict, quantization format, and block_size of the module.
 
     Args:
         module: The target module to perform real quantization.
         dtype: The default data type.
-        export_bf16_weights_amax: Whether to export the weights in bf16 and amax values.
+        export_vllm_fq_weights_qstate: Whether to export the weights in bf16 and amax values.
 
     Returns:
         Tuple: state_dict, quantization format, and block_size of the module.
     """
     name_to_value = {}
-    qformat: str = (
-        QUANTIZATION_NONE if export_bf16_weights_amax else get_quantization_format(module)
-    )
-    block_size = 0 if export_bf16_weights_amax else get_weight_block_size(module)
+    qformat: str = get_quantization_format(module)
+    block_size = get_weight_block_size(module)
 
     if hasattr(module, "weight") and module.weight is not None:
         weight = module.weight.to(dtype).cpu()
@@ -146,11 +147,8 @@ def get_quantized_state(
     if hasattr(module, "expert_bias") and module.expert_bias is not None:
         name_to_value["expert_bias"] = module.expert_bias.to(dtype).cpu()
 
-    if export_bf16_weights_amax:
-        for name, param in get_quantizer_state_dict(module).items():
-            if "_amax" in param:
-                name_to_value[name + "._amax"] = param["_amax"].to(dtype).cpu()
-        return name_to_value, qformat, block_size
+    if export_vllm_fq_weights_qstate:
+        return get_mcore_vllm_fq_quantized_state(module, name_to_value, dtype)
 
     # Getting the weight scales
     weight_scale = get_weight_scaling_factor(module)
@@ -203,7 +201,7 @@ class GPTModelExporter:
         dtype=torch.bfloat16,
         trust_remote_code: bool = True,
         moe_router_dtype: torch.dtype | None = None,
-        export_bf16_weights_amax: bool = False,
+        export_vllm_fq_weights_qstate: bool = False,
     ):
         """Create a GPTModel exporter instance."""
         if not isinstance(model, (GPTModel, MambaModel, LLaVAModel)):
@@ -239,7 +237,7 @@ class GPTModelExporter:
         self.model = model.language_model if self.is_multimodal else model
         self.dtype = dtype
         self.trust_remote_code = trust_remote_code
-        self.export_bf16_weights_amax = export_bf16_weights_amax
+        self.export_vllm_fq_weights_qstate = export_vllm_fq_weights_qstate
         self.arch = self._hf_config.architectures[0]
         # TODO: May modify this later according to what quantization exported ckpt is, currently only support BF16.
         if self.arch == "GptOssForCausalLM":
@@ -351,7 +349,7 @@ class GPTModelExporter:
         state_dict = self.extra_state_dict if self.export_extra_modules else self.state_dict
         quantization_format = (
             get_quantization_format(self.model)
-            if not self.export_bf16_weights_amax
+            if not self.export_vllm_fq_weights_qstate
             else QUANTIZATION_NONE
         )
         quantization = None
@@ -400,7 +398,7 @@ class GPTModelExporter:
                 except (OSError, ValueError, ImportError):
                     pass
 
-        if is_last_stage_main_rank and not self.export_bf16_weights_amax:
+        if is_last_stage_main_rank and not self.export_vllm_fq_weights_qstate:
             hf_quant_config = {
                 "producer": {
                     "name": "modelopt",
@@ -420,7 +418,7 @@ class GPTModelExporter:
             and self.is_multimodal
             and pretrained_model_name_or_path is not None
         ):
-            assert not self.export_bf16_weights_amax, (
+            assert not self.export_vllm_fq_weights_qstate, (
                 "Exporting weights in bf16 and amax values is not supported for multimodal models"
             )
             hf_checkpoint_path = Path(pretrained_model_name_or_path)
@@ -491,7 +489,7 @@ class GPTModelExporter:
         torch.distributed.barrier()
 
         if self.export_extra_modules:
-            assert not self.export_bf16_weights_amax, (
+            assert not self.export_vllm_fq_weights_qstate, (
                 "Exporting weights in bf16 and amax values is not supported for extra modules"
             )
             if is_last_stage_main_rank:
@@ -501,36 +499,8 @@ class GPTModelExporter:
             torch.distributed.barrier()
             return
 
-        if self.export_bf16_weights_amax:
-            amax_state_dict = {
-                k: v.detach().clone().cpu() for k, v in state_dict.items() if k.endswith("_amax")
-            }
-
-            # Gather all amax dicts to rank 0
-            world_size = torch.distributed.get_world_size()
-            rank = torch.distributed.get_rank()
-
-            if rank == 0:
-                # Rank 0 will collect all amax values
-                all_amax_dicts = [None] * world_size
-                torch.distributed.gather_object(amax_state_dict, all_amax_dicts, dst=0)
-
-                # Merge all amax dicts into one
-                merged_amax_dict = {}
-                for amax_dict in all_amax_dicts:
-                    if amax_dict is not None:
-                        merged_amax_dict.update(amax_dict)
-
-                print(f"Total amax entries from all ranks: {len(merged_amax_dict.keys())}")
-                torch.save(merged_amax_dict, save_directory + "/quant_amax.pth")
-            else:
-                # Other ranks just send their amax values
-                torch.distributed.gather_object(amax_state_dict, None, dst=0)
-
-            torch.distributed.barrier()
-
-            # remove amax values from state_dict
-            state_dict = {k: v for k, v in state_dict.items() if not k.endswith("_amax")}
+        if self.export_vllm_fq_weights_qstate:
+            state_dict = gather_mcore_vllm_fq_quantized_state_dict(state_dict, save_directory)
 
         if (
             is_last_stage_main_rank
@@ -640,7 +610,7 @@ class GPTModelExporter:
             return
 
         name_to_value, qformat, block_size = get_quantized_state(
-            module, dtype, self.export_bf16_weights_amax
+            module, dtype, self.export_vllm_fq_weights_qstate
         )
 
         weight = name_to_value.pop("weight")
@@ -674,7 +644,7 @@ class GPTModelExporter:
         self, module, prefix, gate_proj_name="gate_proj", up_proj_name="up_proj"
     ):
         name_to_value, qformat, block_size = get_quantized_state(
-            module, self.dtype, self.export_bf16_weights_amax
+            module, self.dtype, self.export_vllm_fq_weights_qstate
         )
 
         weight = name_to_value.pop("weight")
@@ -741,7 +711,7 @@ class GPTModelExporter:
         v_scale_name="v_scale",
     ):
         name_to_value, qformat, block_size = get_quantized_state(
-            module, self.dtype, self.export_bf16_weights_amax
+            module, self.dtype, self.export_vllm_fq_weights_qstate
         )
 
         q_proj_prefix = prefix + q_proj_name + "."
@@ -865,7 +835,7 @@ class GPTModelExporter:
         for expert in module:
             assert layer_type is not None, "layer_type is required for pack_name_remapping"
             name_to_value, qformat, block_size = get_quantized_state(
-                getattr(expert, layer_type), self.dtype, self.export_bf16_weights_amax
+                getattr(expert, layer_type), self.dtype, self.export_vllm_fq_weights_qstate
             )
             weight = name_to_value.pop("weight")
             weight_scale, weight_scale_2 = self._get_weight_scales(name_to_value, qformat)
@@ -931,7 +901,7 @@ class GPTModelExporter:
         for expert in module:
             assert layer_type is not None, "layer_type is required for pack_name_remapping"
             name_to_value, qformat, block_size = get_quantized_state(
-                getattr(expert, layer_type), self.dtype, self.export_bf16_weights_amax
+                getattr(expert, layer_type), self.dtype, self.export_vllm_fq_weights_qstate
             )
             weight = name_to_value.pop("weight")
             bias = name_to_value.pop("bias", None)
@@ -1271,7 +1241,7 @@ def export_mcore_gpt_to_hf(
     dtype: torch.dtype = torch.bfloat16,
     export_dir: Path | str = tempfile.gettempdir(),
     moe_router_dtype: torch.dtype | None = None,
-    export_bf16_weights_amax: bool = False,
+    export_vllm_fq_weights_qstate: bool = False,
 ):
     """Export Megatron Core GPTModel to unified checkpoint and save to export_dir.
 
@@ -1285,7 +1255,7 @@ def export_mcore_gpt_to_hf(
             eagle_module. Otherwise, only export the base model.
         dtype: The weights data type to export the unquantized layers.
         export_dir: The target export path.
-        export_bf16_weights_amax: If True, export the weights in bf16 and amax values.
+        export_vllm_fq_weights_qstate: If True, export the weights in bf16 and amax values.
     """
     exporter = GPTModelExporter(
         model,
@@ -1293,7 +1263,7 @@ def export_mcore_gpt_to_hf(
         export_extra_modules=export_extra_modules,
         dtype=dtype,
         moe_router_dtype=moe_router_dtype,
-        export_bf16_weights_amax=export_bf16_weights_amax,
+        export_vllm_fq_weights_qstate=export_vllm_fq_weights_qstate,
     )
     exporter.save_pretrained(export_dir, pretrained_model_name_or_path)
 
