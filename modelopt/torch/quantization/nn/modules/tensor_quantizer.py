@@ -425,6 +425,15 @@ class TensorQuantizer(nn.Module):
             and self.block_sizes.get("scale_bits", None) == (8, 0)
         )
 
+    @property
+    def is_static_block_quant(self):
+        """Check if is static block quantization."""
+        return (
+            self.block_sizes is not None
+            and self.block_sizes.get("type", None) != "dynamic"
+            and self._fake_quant
+        )
+
     def disable_calib(self):
         """Disable calibration."""
         self._if_calib = False
@@ -626,7 +635,7 @@ class TensorQuantizer(nn.Module):
             amax = self._get_amax(inputs)
 
         if self.block_sizes is not None and self.block_sizes.get("type", "static") == "dynamic":
-            # Block quantization, including dynamic and static block quantization
+            # Dynamic block quantization
             block_size = self.block_sizes.get(-1, None) or self.block_sizes.get(
                 inputs.dim() - 1, None
             )
@@ -896,11 +905,7 @@ class TensorQuantizer(nn.Module):
             # The axis attribute is still preserved for backward compatibility.
             self._block_sizes_to_axis(inputs)
 
-        if (
-            self.block_sizes is not None
-            and self.block_sizes.get("type", None) != "dynamic"
-            and self._fake_quant
-        ):
+        if self.is_static_block_quant:
             # Tensor reshaping is required for static block quantization
             # Tensor shapes are handled separately by the quantization kernels for dynamic block quantization
             self._setup_for_blockquant(inputs)
@@ -936,11 +941,7 @@ class TensorQuantizer(nn.Module):
                     "This case should have been handled."
                 )
 
-        if (
-            self.block_sizes is not None
-            and self.block_sizes.get("type", None) != "dynamic"
-            and self._fake_quant
-        ):
+        if self.is_static_block_quant:
             outputs = self._reset_to_original_shape(outputs)
 
         return outputs
