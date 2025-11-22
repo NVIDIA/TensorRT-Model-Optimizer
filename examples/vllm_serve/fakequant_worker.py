@@ -33,7 +33,7 @@ from modelopt.torch.utils.dataset_utils import get_dataset_dataloader
 
 
 def convert_amax_hf2vllm(
-    hf_state_dict: dict[str, torch.Tensor],
+    hf_state_dict: dict[str, torch.Tensor], fuse_experts: bool = False
 ) -> dict[str, torch.Tensor]:
     """
     Convert amax values from HuggingFace format to vLLM format.
@@ -66,10 +66,41 @@ def convert_amax_hf2vllm(
             merge_groups[base_pattern].append((key, value))
             continue
 
-        # Check if this is a gate/up projection that needs merging
-        gate_up_match = "mixer" not in key and re.search(r"(.*\.)(gate|up)_proj(\..+_amax)$", key)
+        # Check if this is an expert gate/up projection
+        # Pattern: model.layers.0.mlp.experts.*.gate_proj.input_quantizer._amax and
+        # model.layers.0.mlp.experts.*.up_proj.input_quantizer._amax
+        # Maps to: model.layers.0.mlp.experts.w13_input_quantizer._amax
+        expert_gate_up_match = (
+            "mixer" not in key
+            and fuse_experts
+            and re.search(r"(.*\.experts)\.\d+\.(gate|up)_proj\.([^.]+_quantizer\._amax)$", key)
+        )
+        if expert_gate_up_match:
+            base_pattern = expert_gate_up_match.group(1) + ".w13_" + expert_gate_up_match.group(3)
+            merge_groups[base_pattern].append((key, value))
+            continue
+
+        # Check if this is a non-expert gate/up projection that needs merging
+        gate_up_match = (
+            "mixer" not in key
+            and "experts" not in key
+            and re.search(r"(.*\.)(gate|up)_proj(\..+_amax)$", key)
+        )
         if gate_up_match:
             base_pattern = gate_up_match.group(1) + "gate_up_proj" + gate_up_match.group(3)
+            merge_groups[base_pattern].append((key, value))
+            continue
+
+        # Check if this is an expert down_proj
+        # Pattern: model.layers.0.mlp.experts.*.down_proj.input_quantizer._amax
+        # Maps to: model.layers.0.mlp.experts.w2_input_quantizer._amax
+        expert_down_match = (
+            "mixer" not in key
+            and fuse_experts
+            and re.search(r"(.*\.experts)\.\d+\.down_proj\.([^.]+_quantizer\._amax)$", key)
+        )
+        if expert_down_match:
+            base_pattern = expert_down_match.group(1) + ".w2_" + expert_down_match.group(2)
             merge_groups[base_pattern].append((key, value))
             continue
 
@@ -226,7 +257,7 @@ def _fakequant_run_prolog_worker(self) -> None:
                 for key, value in saved_amax_dict.items()
                 if key.endswith("quantizer_amax")
             }
-        saved_amax_dict = convert_amax_hf2vllm(saved_amax_dict)
+        saved_amax_dict = convert_amax_hf2vllm(saved_amax_dict, fuse_experts=True)
 
         current_state_dict = model.state_dict()
         # Count amax keys in checkpoint and model
