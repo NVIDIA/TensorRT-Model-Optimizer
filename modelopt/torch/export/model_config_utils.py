@@ -16,13 +16,17 @@
 """Common utils for the ModelConfig."""
 
 import dataclasses
+import json
 import math
+import warnings
+from pathlib import Path
 from types import UnionType
 from typing import Union, get_args, get_origin
 
 import numpy as np
 import torch
 
+from ..utils.model_path_utils import fetch_model_config, is_huggingface_model_id
 from .model_config import (
     QUANTIZATION_FP8_PC_PT,
     QUANTIZATION_INT4_AWQ,
@@ -225,6 +229,70 @@ def model_config_from_dict(d: dict) -> ModelConfig:
             raise NotImplementedError(f"{config_name} not supported") from e
 
     return _from_dict(config_type, d)
+
+
+def restore_original_rope_scaling(config_data: dict, original_model_path: str) -> dict:
+    """Restore original rope_scaling configuration if it was modified by transformers.
+
+    Some VLM models like Qwen2.5-VL have their rope_scaling configuration modified
+    by the transformers library during loading (e.g., from "mrope" to "default" with
+    additional fields). This function restores the original configuration.
+
+    Args:
+        config_data: The model configuration dictionary to restore
+        original_model_path: Path to the original model directory or HuggingFace Hub model ID
+                           (e.g., "microsoft/DialoGPT-medium" or "/path/to/local/model")
+
+    Returns:
+        The config_data dictionary with restored rope_scaling (modified in-place)
+
+    Note:
+        This function automatically detects whether original_model_path is a local filesystem
+        path or a HuggingFace Hub model ID. For Hub model IDs, it will fetch the config.json
+        directly from the Hub. Requires huggingface_hub package for Hub model ID support.
+    """
+    try:
+        raw_original_config = None
+
+        # Check if original_model_path is a HuggingFace Hub model ID or local path
+        if is_huggingface_model_id(original_model_path):
+            # Try to fetch config from HuggingFace Hub
+            raw_original_config = fetch_model_config(original_model_path)
+            if raw_original_config is None:
+                warnings.warn(
+                    f"Could not fetch original config from HuggingFace Hub: {original_model_path}"
+                )
+        else:
+            # Handle as local filesystem path
+            original_config_file = Path(original_model_path) / "config.json"
+            if original_config_file.exists():
+                with open(original_config_file) as f:
+                    raw_original_config = json.load(f)
+            else:
+                warnings.warn(f"Original config file not found: {original_config_file}")
+
+        # If we successfully got the original config, proceed with restoration
+        if raw_original_config is not None:
+            # Check if rope_scaling was incorrectly modified from mrope to default by AutoConfig
+            orig_rope = raw_original_config.get("rope_scaling", {})
+            curr_rope = config_data.get("rope_scaling", {})
+            if (
+                orig_rope.get("type") == "mrope"
+                and curr_rope.get("type") == "default"
+                and "rope_type" in curr_rope
+            ):
+                warnings.warn(
+                    f"Restoring original rope_scaling configuration from {original_model_path}"
+                )
+                config_data["rope_scaling"] = raw_original_config["rope_scaling"]
+
+                # Also restore rope_scaling in text_config if it exists to maintain consistency
+                if "text_config" in config_data and "rope_scaling" in config_data["text_config"]:
+                    config_data["text_config"]["rope_scaling"] = raw_original_config["rope_scaling"]
+    except Exception as e:
+        warnings.warn(f"Could not restore original rope_scaling configuration: {e}")
+
+    return config_data
 
 
 def pad_weights(weights, tp_size):

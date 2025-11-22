@@ -274,6 +274,9 @@ def main(args):
                 **model_kwargs,
             )
         calibration_only = True
+
+    # Store original model path for config restoration
+    model._original_model_path = args.pyt_ckpt_path
     model_is_already_quantized = is_quantized(model)
 
     model_type = get_model_type(model)
