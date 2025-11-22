@@ -92,7 +92,7 @@ def test_quant_recipe_hparam():
     ]
     hparam = QuantRecipeHparam(
         search_recipes,
-        nn_modules=[model_test],
+        quant_modules=[model_test],
     )
     model_test._register_hparam("quant_recipe", hparam)
     assert model_test.quant_recipe == QuantRecipe(mtq.INT4_BLOCKWISE_WEIGHT_ONLY_CFG)
