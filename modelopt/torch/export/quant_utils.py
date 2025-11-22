@@ -779,7 +779,36 @@ def to_quantized_weight(
         )[0]._quantized_data
 
     if quantization == QUANTIZATION_FP8_PC_PT:
-        return (weight / weights_scaling_factor.unsqueeze(-1)).to(torch.float8_e4m3fn)
+        if weight.dim() == 3:
+            # Handle different scale tensor shapes
+            if weights_scaling_factor.dim() == 1:
+                # Per-expert scaling only: (num_experts,) -> (num_experts, 1, 1)
+                return (weight / weights_scaling_factor[:, None, None]).to(torch.float8_e4m3fn)
+            elif weights_scaling_factor.dim() == 2:
+                # Per-channel scaling: check which dimension matches
+                if weights_scaling_factor.shape[0] != weight.shape[0]:
+                    raise ValueError(
+                        f"First dimension (num_experts) mismatch for FP8_PC_PT quantization. "
+                        f"weight shape: {weight.shape}, scale shape: {weights_scaling_factor.shape}"
+                    )
+                if weight.shape[-1] == weight.shape[-2]:
+                    raise ValueError(
+                        f"Ambiguous scaling dimension for FP8_PC_PT quantization with square weight matrix. "
+                        f"weight shape: {weight.shape}, scale shape: {weights_scaling_factor.shape}. "
+                        f"Cannot determine if scaling should be applied to input_dim or output_dim."
+                    )
+                if weights_scaling_factor.shape[-1] == weight.shape[-1]:
+                    # (num_experts, input_dim) -> (num_experts, 1, input_dim), BMM-style
+                    return (weight / weights_scaling_factor.unsqueeze(-2)).to(torch.float8_e4m3fn)
+                elif weights_scaling_factor.shape[-1] == weight.shape[-2]:
+                    # (num_experts, output_dim) -> (num_experts, output_dim, 1), Standard MoE case
+                    return (weight / weights_scaling_factor.unsqueeze(-1)).to(torch.float8_e4m3fn)
+                else:
+                    raise ValueError(
+                        f"Cannot determine correct unsqueeze dimension for FP8_PC_PT quantization. "
+                        f"weight shape: {weight.shape}, scale shape: {weights_scaling_factor.shape}"
+                    )
+        return (weight / weights_scaling_factor[:, None]).to(torch.float8_e4m3fn)
 
     if quantization in [QUANTIZATION_INT4_AWQ, QUANTIZATION_W4A8_AWQ]:
         return pack_int4_in_uint8(weight, weights_scaling_factor)
