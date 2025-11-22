@@ -38,6 +38,7 @@ from modelopt.torch.utils import import_plugin
 
 from .model_config import (
     KV_CACHE_FP8,
+    KV_CACHE_NVFP4,
     QUANTIZATION_FP8,
     QUANTIZATION_FP8_PB_REAL,
     QUANTIZATION_FP8_PB_WO,
@@ -333,7 +334,6 @@ class GPTModelExporter:
         state_dict = self.extra_state_dict if self.export_extra_modules else self.state_dict
         quantization_format = get_quantization_format(self.model)
         quantization = None
-        kv_cache_quantization = None
 
         if quantization_format in (
             QUANTIZATION_FP8_PB_REAL,
@@ -345,6 +345,11 @@ class GPTModelExporter:
         elif quantization_format == QUANTIZATION_NVFP4:
             quantization = "NVFP4"
 
+        kv_cache_quantization = None
+        kv_cache_dtype = get_kv_cache_dtype(self.model)
+        if kv_cache_dtype in (KV_CACHE_FP8, KV_CACHE_NVFP4):
+            # Only FP8 KV Cache is supported in VLLM for now
+            kv_cache_quantization = kv_cache_dtype
         # We use the last PP rank and the 1st EP rank to write the config because
         # medusa_heads and eagle_module only exist in the last stage.
         if is_last_stage_main_rank:
