@@ -981,6 +981,45 @@ class MaxCalibConfig(QuantizeAlgorithmConfig):
     )
 
 
+class MseCalibConfig(QuantizeAlgorithmConfig):
+    """Configuration for per-tensor MSE calibration.
+
+    Finds a scale s (via amax a, with s = a / q_max) that minimizes the
+    reconstruction error of a tensor after uniform Q→DQ:
+
+        s* = argmin_s  E[(X - DQ(Q(X; s)))^2],   X ∈ {weights | activations}
+    """
+
+    method: Literal["mse"] = ModeloptField("mse")
+
+    num_steps: int | None = ModeloptField(
+        default=10,
+        ge=1,
+        title="Number of amax candidates to try.",
+        description="Number of amax candidates to search over for MSE minimization.",
+    )
+
+    start_multiplier: float | None = ModeloptField(
+        default=0.25,
+        gt=0.0,
+        title="Starting multiplier for amax search.",
+        description="Starting multiplier for amax search range (multiplies initial amax).",
+    )
+
+    stop_multiplier: float | None = ModeloptField(
+        default=4.0,
+        gt=0.0,
+        title="Ending multiplier for amax search.",
+        description="Ending multiplier for amax search range (multiplies initial amax).",
+    )
+
+    distributed_sync: bool | None = ModeloptField(
+        default=True,
+        title="Whether to sync the amax across the distributed processes.",
+        description="If True, the amax will be synced across the distributed processes.",
+    )
+
+
 class SmoothQuantCalibConfig(QuantizeAlgorithmConfig):
     """The config for ``smoothquant`` algorithm (SmoothQuant).
 

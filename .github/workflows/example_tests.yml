@@ -54,12 +54,11 @@ jobs:
       checks: read
     secrets: inherit
     with:
-      match_pattern: '^DCO$|^linux$' # Wait for DCO and Unit tests / linux to pass
+      match_pattern: "^DCO$|^linux$" # Wait for DCO and Unit tests / linux to pass
       delay: 300s
   example-tests-pr:
     needs: [check-file-changes, wait-checks]
     if: needs.check-file-changes.outputs.any_changed == 'true'
-    # Runner list at https://github.com/nv-gha-runners/enterprise-runner-configuration/blob/main/docs/runner-groups.md
     runs-on: linux-amd64-gpu-h100-latest-1
     timeout-minutes: 90
     strategy:
@@ -84,8 +83,7 @@ jobs:
           pytest -s tests/examples/${{ matrix.EXAMPLE }}
   example-tests-non-pr:
     if: ${{ !startsWith(github.ref, 'refs/heads/pull-request/') }}
-    # Runner list at https://github.com/nv-gha-runners/enterprise-runner-configuration/blob/main/docs/runner-groups.md
-    runs-on: linux-amd64-gpu-h100-latest-1
+    runs-on: linux-amd64-gpu-h100-latest-2
     timeout-minutes: 90
     strategy:
       matrix:

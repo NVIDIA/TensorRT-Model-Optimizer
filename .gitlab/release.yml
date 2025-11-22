@@ -17,8 +17,8 @@ build-and-upload-wheels:
         TWINE_PASSWORD: $ARTIFACTORY_TOKEN # Configured in GitLab > Settings > CI/CD
         REPO_URL: https://urm.nvidia.com/artifactory/api/pypi/sw-dl-algo-ammo-pypi-local
     - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: manual
       variables:
-        when: manual
         RELEASE: "false"
         TWINE_USERNAME: gitlab-ci-token
         TWINE_PASSWORD: $CI_JOB_TOKEN

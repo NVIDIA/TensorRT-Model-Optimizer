@@ -45,6 +45,14 @@ WINT4INT8_CFG = {
     "algorithm": "awq_lite",
 }
 
+INT8_MSE_CFG = {
+    "quant_cfg": {
+        "*weight_quantizer": {"num_bits": 8, "axis": 0},
+        "*input_quantizer": {"num_bits": 8, "axis": None},
+    },
+    "algorithm": "mse",
+}
+
 STATIC_WEIGHT_DYNAMIC_ACTIVATION_CFG = {
     "quant_cfg": {
         "*weight_quantizer": {
@@ -92,6 +100,7 @@ quant_cfg_custom_calib = {
         INT4_AWQ_CLIP_CFG,
         INT4_AWQ_FULL_CFG,
         WINT4INT8_CFG,
+        INT8_MSE_CFG,
     ],
 )
 def test_quantize(model_cls, config):

@@ -111,12 +111,12 @@ quantize(
 
 ### Evaluate the quantized ONNX model
 
-The following evaluation requires the `val` directory of the [ImageNet dataset](https://www.kaggle.com/c/imagenet-object-localization-challenge/data). Alternatively, you can prepare it from [this](https://huggingface.co/datasets/mrm8488/ImageNet1K-val) Hugging Face dataset. Once you have it, the quantized ONNX ViT model can be evaluated on the ImageNet dataset as follows:
+The evaluation script automatically downloads and uses the [ILSVRC/imagenet-1k](https://huggingface.co/datasets/ILSVRC/imagenet-1k) dataset from Hugging Face. This gated repository requires authentication via Hugging Face access token. See <https://huggingface.co/docs/hub/en/security-tokens> for details. The quantized ONNX ViT model can be evaluated on the ImageNet dataset as follows:
 
 ```bash
 python evaluate.py \
     --onnx_path=<path to classification model> \
-    --imagenet_path=<path to the ImageNet dataset> \
+    --imagenet_path=<HF dataset card or local path to the ImageNet dataset> \
     --engine_precision=stronglyTyped \
     --model_name=vit_base_patch16_224
 ```
@@ -154,14 +154,14 @@ python torch_quant_to_onnx.py \
 
 ### Evaluation
 
-If the input model is of type image classification, use the following script to evaluate it.
+If the input model is of type image classification, use the following script to evaluate it. The script automatically downloads and uses the [ILSVRC/imagenet-1k](https://huggingface.co/datasets/ILSVRC/imagenet-1k) dataset from Hugging Face. This gated repository requires authentication via Hugging Face access token. See <https://huggingface.co/docs/hub/en/security-tokens> for details.
 
 > *Note: TensorRT 10.11 or later is required to evaluate the MXFP8 or NVFP4 ONNX models.*
 
 ```bash
 python evaluate.py \
     --onnx_path=<path to the exported ONNX model> \
-    --imagenet_path=<path to the ImageNet dataset> \
+    --imagenet_path=<HF dataset card or local path to the ImageNet dataset> \
     --engine_precision=stronglyTyped \
     --model_name=vit_base_patch16_224
 ```

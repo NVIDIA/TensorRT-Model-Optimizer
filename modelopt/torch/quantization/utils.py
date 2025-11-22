@@ -42,6 +42,7 @@ __all__ = [
     "is_quantized_linear",
     "is_quantized_row_parallel_linear",
     "reduce_amax",
+    "reduce_sum",
     "replace_function",
     "update_quant_cfg_with_kv_cache_quant",
     "weight_attr_names",
@@ -184,6 +185,35 @@ def reduce_amax(input, axis=None, keepdims=True, squeeze_scalar=True):
         output = torch.maximum(torch.abs(max_val), torch.abs(min_val))
         if squeeze_scalar and output.numel() == 1:
             output.squeeze_()
+    return output
+
+
+@torch.no_grad()
+def reduce_sum(input, axis=None, keepdims=True):
+    """Compute the sum of a tensor along specified axes.
+
+    Reduces input_tensor along the dimensions given in axis. Unless keepdims is true,
+    the rank of the tensor is reduced by 1 for each entry in axis. If keepdims is true,
+    the reduced dimensions are retained with length 1.
+
+    .. note::
+        Gradient computation is disabled as this function is never meant for learning.
+
+    Args:
+        input: Input tensor
+        axis: The dimensions to reduce. None or int or tuple of ints. If None (the default),
+            reduces all dimensions. Must be in the range [-rank(input_tensor), rank(input_tensor)).
+        keepdims: A boolean. If true, retains reduced dimensions with length 1. Default True
+
+    Returns:
+        The reduced tensor.
+    """
+    if axis is None:
+        output = torch.sum(input)
+    else:
+        if isinstance(axis, int):
+            axis = (axis,)
+        output = torch.sum(input, dim=axis, keepdim=keepdims)
     return output
 
 
@@ -598,6 +628,36 @@ def enable_fake_quant(module):
     for m in module.modules():
         if hasattr(m, "weight_quantizer"):
             m.weight_quantizer._fake_quant = original_fake_quant.pop(0)
+
+
+@contextmanager
+def enable_quant(quantizer):
+    """Temporarily enable quantization for a quantizer.
+
+    Args:
+        quantizer: The quantizer module to enable quantization for.
+    """
+    original_if_quant = quantizer._if_quant
+    quantizer._if_quant = True
+    try:
+        yield
+    finally:
+        quantizer._if_quant = original_if_quant
+
+
+@contextmanager
+def disable_calib(quantizer):
+    """Temporarily disable calibration for a quantizer.
+
+    Args:
+        quantizer: The quantizer module to disable calibration for.
+    """
+    original_if_calib = quantizer._if_calib
+    quantizer._if_calib = False
+    try:
+        yield
+    finally:
+        quantizer._if_calib = original_if_calib
 
 
 @contextmanager

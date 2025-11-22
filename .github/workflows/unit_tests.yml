@@ -39,7 +39,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Run unit tests
-        run: pip install tox && COV_ARGS="--cov" tox -e py312-torch28-tf_latest-unit
+        run: pip install tox && COV_ARGS="--cov" tox -e py312-torch29-tf_latest-unit
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v5
         with:
@@ -57,7 +57,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Run unit tests (without coverage)
-        run: pip install tox && tox -e py312-torch28-tf_latest-unit
+        run: pip install tox && tox -e py312-torch29-tf_latest-unit
   multi-py:
     if: github.event_name == 'pull_request'
     needs: [linux]
@@ -72,7 +72,7 @@ jobs:
         with:
           python-version: "3.${{ matrix.py }}"
       - name: Run unit tests
-        run: pip install tox && tox -e py3${{ matrix.py }}-torch28-tf_latest-unit
+        run: pip install tox && tox -e py3${{ matrix.py }}-torch29-tf_latest-unit
   multi-torch:
     if: github.event_name == 'pull_request'
     needs: [linux]
@@ -80,7 +80,7 @@ jobs:
     timeout-minutes: 30
     strategy:
       matrix:
-        torch: [26, 27]
+        torch: [26, 27, 28]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -102,7 +102,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Run unit tests
-        run: pip install tox && tox -e py312-torch28-tf_${{ matrix.tf }}-unit
+        run: pip install tox && tox -e py312-torch29-tf_${{ matrix.tf }}-unit
   partial-install:
     if: github.event_name == 'pull_request'
     needs: [linux]

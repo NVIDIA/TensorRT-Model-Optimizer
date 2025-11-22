@@ -273,6 +273,13 @@ class GPTModelExporter:
                             "use_aux_hidden_state"
                         ],
                         "eagle_aux_hidden_state_layer_ids": model.eagle_config.eagle_aux_hidden_state_layer_ids,
+                        "next_layer_regular": True,
+                        "parallel_draft_step": mode_cfg["config"]["eagle_architecture_config"][
+                            "parallel_draft_step"
+                        ],
+                        "parallel_draft_heads_num_layers": mode_cfg["config"][
+                            "eagle_architecture_config"
+                        ]["parallel_draft_heads_num_layers"],
                     }
 
                     eagle_config_update = {
@@ -1023,6 +1030,15 @@ class GPTModelExporter:
             else:
                 self.rules["linear_fc1"](layer.mlp.linear_fc1, layer_id)
                 self.rules["linear_fc2"](layer.mlp.linear_fc2, layer_id)
+
+        parallel_draft_heads = getattr(eagle_module, "parallel_draft_heads", None)
+        if parallel_draft_heads is not None:
+            for head_id, head in enumerate(parallel_draft_heads):
+                self.rules["parallel_draft_heads.lm_head"](head.lm_head, head_id)
+                for layer_id, layer in enumerate(head.medusa_layers):
+                    self.rules["parallel_draft_heads.medusa_layers"](
+                        layer.linear, head_id, layer_id
+                    )
 
     def _get_state_dict(self):
         model = self.model

@@ -21,9 +21,9 @@ from typing import Any
 import numpy as np
 import torch
 import transformers
-from ar_validate import validate_ar
 from datasets import load_dataset
 from PIL import Image
+from scripts.ar_validate import validate_ar
 from torch.utils.data import Dataset
 from transformers import AutoProcessor, Trainer, TrainerCallback
 from transformers.trainer_pt_utils import LabelSmoother
