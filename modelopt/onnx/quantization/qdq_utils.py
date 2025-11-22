@@ -1037,6 +1037,21 @@ def remove_graph_input_q(onnx_model: onnx.ModelProto) -> onnx.ModelProto:
     return onnx_model
 
 
+def replace_zero_scale_with_smallest_nonzero(onnx_model: onnx.ModelProto) -> onnx.ModelProto:
+    """Replace zero scale values with smallest nonzero fp16 value in the ONNX model."""
+    graph = onnx_model.graph
+    fp16_smallest_nonzero = np.float16(6e-08)
+    scale_nodes = [node.input[1] for node in graph.node if node.op_type == "QuantizeLinear"]
+    for node in graph.node:
+        if node.op_type == "Constant" and node.output[0] in scale_nodes:
+            for attr in node.attribute:
+                if attr.name == "value":
+                    tensor = numpy_helper.to_array(attr.t)
+                    new_tensor = np.where(tensor == 0, fp16_smallest_nonzero, tensor)
+                    attr.t.CopyFrom(numpy_helper.from_array(new_tensor, attr.t.name))
+    return onnx_model
+
+
 def _cast_initializer_to_dtype(
     node: onnx.NodeProto, dtype: str, initializer_map: dict[str, onnx.TensorProto]
 ):

@@ -37,6 +37,7 @@ from modelopt.onnx.quantization.qdq_utils import (
     qdq_to_dq,
     quantize_weights_to_int4,
     quantize_weights_to_mxfp8,
+    replace_zero_scale_with_smallest_nonzero,
 )
 from modelopt.onnx.utils import (
     get_input_names,
@@ -336,6 +337,32 @@ def is_mxfp8_quantized(model: nn.Module) -> bool:
     return False
 
 
+def is_int8_quantized(model: nn.Module) -> bool:
+    """Check if the model is quantized in INT8 mode."""
+    for _, module in model.named_modules():
+        if (
+            hasattr(module, "weight_quantizer")
+            and hasattr(module, "input_quantizer")
+            and module.weight_quantizer._num_bits == 8
+            and module.input_quantizer._num_bits == 8
+        ):
+            return True
+    return False
+
+
+def is_fp8_quantized(model: nn.Module) -> bool:
+    """Check if the model is quantized in FP8 mode."""
+    for _, module in model.named_modules():
+        if (
+            hasattr(module, "weight_quantizer")
+            and hasattr(module, "input_quantizer")
+            and module.weight_quantizer._num_bits == (4, 3)
+            and module.input_quantizer._num_bits == (4, 3)
+        ):
+            return True
+    return False
+
+
 def get_onnx_bytes_and_metadata(
     model: nn.Module,
     dummy_input: Any | tuple,
@@ -509,6 +536,9 @@ def get_onnx_bytes_and_metadata(
             onnx_opt_graph = convert_to_f16(
                 onnx_opt_graph, low_precision_type=weights_dtype, keep_io_types=False
             )
+
+        # TensorRT expects all scales to be postive
+        onnx_opt_graph = replace_zero_scale_with_smallest_nonzero(onnx_opt_graph)
 
     # If the onnx model contains external data store the external tensors in one file and save the onnx model
     if has_external_data(onnx_save_path):
