@@ -62,7 +62,7 @@ example-torch:
 example-trtllm:
   extends: example-torch
   timeout: 60m
-  image: nvcr.io/nvidia/tensorrt-llm/release:1.1.0rc2.post2
+  image: nvcr.io/nvidia/tensorrt-llm/release:1.2.0rc0.post1
   tags: [docker, linux, 2-gpu, sm>=89]
   parallel:
     matrix:

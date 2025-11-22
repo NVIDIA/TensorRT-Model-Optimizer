@@ -65,7 +65,7 @@ jobs:
       matrix:
         EXAMPLE: [llm_ptq]
     container: &example_container
-      image: nvcr.io/nvidia/tensorrt-llm/release:1.1.0rc2.post2
+      image: nvcr.io/nvidia/tensorrt-llm/release:1.2.0rc0.post1
       env:
         PIP_CONSTRAINT: "" # Disable pip constraint for upgrading packages
         HF_TOKEN: ${{ secrets.HF_TOKEN }}
