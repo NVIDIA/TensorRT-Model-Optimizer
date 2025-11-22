@@ -141,7 +141,7 @@ def _preprocess_onnx(
             raise e
 
         try:
-            model_simp = onnxslim.slim(onnx_model)
+            model_simp = onnxslim.slim(onnx_model, skip_fusion_patterns=["FusionGemm"])
             if model_simp:
                 onnx_model = model_simp
                 onnx_path = os.path.join(output_dir, f"{model_name}_simp.onnx")
