@@ -923,6 +923,7 @@ def create_argument_parser() -> argparse.ArgumentParser:
     model_group.add_argument(
         "--component-dtype",
         action="append",
+        default=[],
         help="Precision for loading each component of the model by format of name:dtype. "
         "You can specify multiple components. "
         "Example: --component-dtype vae:Half --component-dtype transformer:BFloat16",
