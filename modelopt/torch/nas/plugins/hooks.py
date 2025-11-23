@@ -14,11 +14,24 @@
 # limitations under the License.
 """Forward hooks for activation-based importance estimation in NAS plugins."""
 
+import gc
 from abc import ABC, abstractmethod
 
 import torch
+import torch.nn.functional as F
 from megatron.core.tensor_parallel import gather_from_tensor_model_parallel_region
 from torch import nn
+
+
+def clear_gpu_memory(clear: bool) -> None:
+    """Clear GPU memory cache if requested.
+
+    Args:
+        clear: If True, runs garbage collection and empties CUDA cache.
+    """
+    if clear:
+        gc.collect()
+        torch.cuda.empty_cache()
 
 
 class ForwardHook(ABC):
@@ -98,3 +111,141 @@ class L2NormHook(ForwardHook):
         assert self._activations is not None, "No activations collected for importance estimation."
         # Convert squared sum to L2 norm
         return self._activations.pow(0.5)
+
+
+def get_pruning_schedule(num_channels, pruning_iters):
+    """Spending decreases monotonically when num_channels >= pruning_iters.
+
+    Intervals between spends increase monotonically when pruning_iters > num_channels.
+    The budget is fully utilized, and there's spending in the last iteration.
+    num_channels = 10, pruning_iters = 4 ==> [3, 3, 2, 2]
+    num_channels = 4, pruning_iters = 10 ==> [0, 1, 0, 1, 0, 0, 1, 0, 0, 1]
+    """
+    if num_channels >= pruning_iters:
+        # Case when budget is greater than or equal to iterations
+        q = num_channels // pruning_iters  # Base spend per iteration
+        r = num_channels % pruning_iters  # Remainder to distribute
+
+        schedule = []
+        for i in range(pruning_iters):
+            if i < r:
+                # Assign higher spend to earlier iterations
+                schedule.append(q + 1)
+            else:
+                schedule.append(q)
+    else:
+        # Case when iterations are greater than budget
+        schedule = [0] * pruning_iters
+        for i in range(1, num_channels + 1):
+            # Distribute spends at positions where intervals increase monotonically
+            pos = ((i * pruning_iters) // num_channels) - 1
+            schedule[pos] = 1
+    return schedule
+
+
+class IterativeChannelContributionHook(ForwardHook):
+    """Hook for iterative channel pruning based on contribution analysis.
+
+    Progressively identifies and removes the least important input channels of a linear layer
+    by measuring channel contribution as the L2 norm of output change when removed.
+
+    Args:
+        linear_layer: The linear projection layer to analyze.
+        activation_hooks_kwargs: Configuration dict with:
+            - validation_full_iters (int): Number of pruning iterations.
+            - clear_gpu_memory (bool, optional): Clear GPU memory during computation.
+            - calibration_method (str, optional): "scale_by_magnitude" or None.
+    """
+
+    def __init__(self, linear_layer: nn.Linear, activation_hooks_kwargs: dict):
+        """Initialize the iterative channel contribution hook."""
+        self.weight_matrix = linear_layer.weight
+        self.num_channels = linear_layer.in_features
+        self.pruning_iters = activation_hooks_kwargs["validation_full_iters"]
+        self.clear_gpu_memory = activation_hooks_kwargs.get("clear_gpu_memory", False)
+        self.curr_iter = 0
+        self.pruning_schedule = get_pruning_schedule(
+            num_channels=self.num_channels, pruning_iters=self.pruning_iters
+        )
+
+        self.agg_cont_per_channel = torch.zeros(
+            size=(self.num_channels,),
+            dtype=torch.float32,
+            device=self.weight_matrix.device,
+        )
+        self.pruned_channels = []
+        self.calibration_method = activation_hooks_kwargs.get("calibration_method")
+        self.epsilon = 1e-8
+
+    def __call__(self, module: nn.Module, args: tuple[torch.Tensor], output: torch.Tensor) -> None:
+        """Compute channel contributions and prune channels according to schedule.
+
+        Args:
+            module: The module this hook is registered on.
+            args: Tuple with input tensor of shape (B, T, I).
+            output: Output tensor of shape (B, T, E).
+        """
+        activations = args[0]
+        n_channels_to_prune = self.pruning_schedule[self.curr_iter]
+
+        curr_activations = activations.clone()  # Shape B,T,I
+        curr_activations[..., self.pruned_channels] = 0
+        output_curr = F.linear(input=curr_activations, weight=self.weight_matrix)  # Shape B,T,E
+
+        if self.calibration_method is None:
+            scaling_factor_per_token = torch.ones_like(output[..., 0])  # Shape B,T
+        elif self.calibration_method == "scale_by_magnitude":
+            output_norms = torch.linalg.vector_norm(output, dim=-1)  # Shape B,T
+            output_curr_norms = torch.linalg.vector_norm(output_curr, dim=-1)  # Shape B,T
+            scaling_factor_per_token = output_curr_norms / (output_norms + self.epsilon)
+            del output_curr_norms, output_norms
+        else:
+            raise NotImplementedError
+        del curr_activations
+        clear_gpu_memory(clear=self.clear_gpu_memory)
+
+        s = scaling_factor_per_token.unsqueeze(-1) * output - output_curr  # Shape: (B, T, E)
+        s_squared_per_token = torch.sum(s**2, dim=-1)  # Shape: (B, T)
+        b = s @ self.weight_matrix  # Shape: (B, T, I)
+        c = torch.sum(self.weight_matrix**2, dim=0)  # Shape: (I)
+        del s, output_curr
+        clear_gpu_memory(clear=self.clear_gpu_memory)
+
+        contribution_squared = (
+            s_squared_per_token.unsqueeze(2) + 2 * activations * b + (activations**2) * c
+        )  # Shape: (B, T, I)
+        del s_squared_per_token, b, c, activations
+        clear_gpu_memory(clear=self.clear_gpu_memory)
+
+        contribution = torch.sqrt(contribution_squared + self.epsilon)  # Shape: (B, T, I)
+        mean_cont_per_channel = torch.mean(contribution, dim=(0, 1))  # Shape: (I)
+        mean_cont_per_channel[self.pruned_channels] = torch.inf
+        del contribution, contribution_squared
+        clear_gpu_memory(clear=self.clear_gpu_memory)
+
+        if n_channels_to_prune == 0:
+            self.agg_cont_per_channel += mean_cont_per_channel
+        else:
+            _, worst_indices = torch.topk(mean_cont_per_channel, n_channels_to_prune, largest=False)
+            worst_indices_list = worst_indices.tolist()
+            assert not set(self.pruned_channels).intersection(set(worst_indices_list))
+            self.pruned_channels.extend(worst_indices_list)
+            self.agg_cont_per_channel.zero_()
+        self.curr_iter += 1
+
+    def to_dict(self) -> dict[str, torch.Tensor]:
+        """Convert pruning results to dict with channel importance rankings.
+
+        Returns:
+            Dict with "score" (importance rank per channel) and
+            "channels_importance_ascending" (channel indices in ascending importance).
+        """
+        assert self.num_channels == len(self.pruned_channels)
+        channels_importance_ascending = torch.tensor(self.pruned_channels, dtype=torch.long)
+        score = torch.empty(self.num_channels, dtype=torch.long)
+        score[channels_importance_ascending] = torch.arange(self.num_channels, dtype=torch.long)
+
+        return {
+            "score": score.cpu(),
+            "channels_importance_ascending": channels_importance_ascending.cpu(),
+        }
