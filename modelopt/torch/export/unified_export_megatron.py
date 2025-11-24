@@ -280,6 +280,9 @@ class GPTModelExporter:
                         "parallel_draft_heads_num_layers": mode_cfg["config"][
                             "eagle_architecture_config"
                         ]["parallel_draft_heads_num_layers"],
+                        "use_embedding": mode_cfg["config"]["eagle_architecture_config"][
+                            "use_embedding"
+                        ],
                     }
 
                     eagle_config_update = {
@@ -954,9 +957,11 @@ class GPTModelExporter:
 
         self.rules["fc"](eagle_module.fc)
         if self.model.eagle_config.use_aux_hidden_state:
-            self.rules["enorm"](eagle_module.enorm)
+            if self.model.eagle_config.use_embedding:
+                self.rules["enorm"](eagle_module.enorm)
         elif self.model.eagle_config.use_mtp_layernorm:
-            self.rules["enorm"](eagle_module.enorm)
+            if self.model.eagle_config.use_embedding:
+                self.rules["enorm"](eagle_module.enorm)
             self.rules["hnorm"](eagle_module.hnorm)
 
         if self.model.eagle_config.use_last_layernorm:
