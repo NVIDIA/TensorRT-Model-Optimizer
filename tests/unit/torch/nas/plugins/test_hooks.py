@@ -17,44 +17,83 @@
 
 import torch
 import torch.nn as nn
+from _test_utils.import_helper import skip_if_no_megatron
 
-from modelopt.torch.nas.plugins.hooks import IterativeChannelContributionHook
+skip_if_no_megatron()
+
+from _test_utils.torch.distributed.utils import spawn_multiprocess_job
+from megatron.core.parallel_state import initialize_model_parallel
+
+from modelopt.torch.nas.plugins.hooks import IterativeChannelContributionHook, L2NormHook
 
 
 def test_iterative_channel_contribution_hook():
     """Test IterativeChannelContributionHook returns correct scores after pruning."""
-    # Create a simple linear layer
     torch.manual_seed(42)
-    linear_layer = nn.Linear(in_features=6, out_features=4, bias=False)
 
-    # Configure hook
+    linear_layer = nn.Linear(in_features=6, out_features=4, bias=False)
     activation_hooks_kwargs = {
         "validation_full_iters": 3,
         "clear_gpu_memory": False,
         "calibration_method": None,
     }
-
-    # Create and register hook
     hook = IterativeChannelContributionHook(linear_layer, activation_hooks_kwargs)
     linear_layer.register_forward_hook(hook)
 
-    # Run forward passes for all pruning iterations
-    torch.manual_seed(123)
     for _ in range(activation_hooks_kwargs["validation_full_iters"]):
         activations = torch.randn(2, 3, linear_layer.in_features)
         _ = linear_layer(activations)
 
-    # Get results
     results = hook.to_dict()
 
-    # Verify shapes
+    #
+    # Assertions
+    #
     assert results["score"].shape == (6,)
     assert results["channels_importance_ascending"].shape == (6,)
 
-    # Verify exact score values
-    expected_scores = torch.tensor([0, 5, 1, 3, 2, 4])
+    expected_scores = torch.tensor([5, 2, 4, 1, 3, 0])
     assert torch.equal(results["score"], expected_scores)
 
-    # Verify exact channels_importance_ascending values
-    expected_channels_asc = torch.tensor([0, 2, 4, 3, 5, 1])
+    expected_channels_asc = torch.tensor([5, 3, 1, 4, 2, 0])
     assert torch.equal(results["channels_importance_ascending"], expected_channels_asc)
+
+
+def _test_l2_norm_hook(rank, size):
+    """Internal test function that runs in spawned process with distributed setup."""
+    # Initialize Megatron parallel state (distributed is already initialized by spawn_multiprocess_job)
+    initialize_model_parallel(tensor_model_parallel_size=1, pipeline_model_parallel_size=1)
+
+    torch.manual_seed(42)
+
+    linear_layer = nn.Linear(in_features=6, out_features=4, bias=False)
+    hook = L2NormHook(max_size=None)
+    linear_layer.register_forward_hook(hook)
+
+    num_iterations = 3
+    for _ in range(num_iterations):
+        activations = torch.randn(2, 3, linear_layer.in_features)
+        _ = linear_layer(activations)
+
+    scores = hook.accumulate()
+
+    #
+    # Assertions
+    #
+    assert scores.shape == (6,)
+
+    expected_scores = torch.tensor(
+        [3.2030, 2.5018, 2.5272, 1.9222, 2.6204, 2.2623], dtype=torch.float32
+    )
+    assert torch.allclose(scores, expected_scores, atol=1e-4), (
+        f"Expected scores {expected_scores}, got {scores}"
+    )
+
+
+def test_l2_norm_hook():
+    """Test L2NormHook returns correct scores after accumulating activations."""
+    spawn_multiprocess_job(
+        size=1,
+        job=_test_l2_norm_hook,
+        backend="gloo",
+    )
