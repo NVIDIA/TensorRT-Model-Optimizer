@@ -17,10 +17,7 @@
 from __future__ import annotations
 import sys
 
-if sys.version_info[1] < 9:  # if less than pytorch 3.9
-    from typing import Sequence, Callable
-else:
-    from collections.abc import Sequence, Callable
+from collections.abc import Sequence, Callable
 
 from dataclasses import dataclass
 from typing import Any, ContextManager, Iterable, Mapping, Optional, Union
