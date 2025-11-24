@@ -17,6 +17,7 @@ Model Optimizer Changelog (Linux)
 - Add flag ``trt_plugins_precision`` in ONNX autocast to indicate custom ops precision. This is similar to the flag already existing in the quantization workflow.
 - Add support for PyTorch Geometric quantization.
 - Add per tensor and per channel MSE calibrator support.
+- Added support for PTQ/QAT checkpoint export and loading for running fakequant evaluation in vLLM. See ``examples/vllm_serve/README.md#load-qatptq-model-and-serve-in-vllm-wip`` for more details.
 
 **Documentation**
 
