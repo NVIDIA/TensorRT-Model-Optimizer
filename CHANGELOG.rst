@@ -16,6 +16,7 @@ Model Optimizer Changelog (Linux)
 - Add FP8/NVFP4 KV cache quantization support for Megatron Core models.
 - Add flag ``trt_plugins_precision`` in ONNX autocast to indicate custom ops precision. This is similar to the flag already existing in the quantization workflow.
 - Add support for PyTorch Geometric quantization.
+- Add per tensor and per channel MSE calibrator support.
 
 **Documentation**
 
