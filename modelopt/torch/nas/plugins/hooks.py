@@ -170,12 +170,17 @@ class IterativeChannelContributionHook(ForwardHook):
             - validation_full_iters (int): Number of pruning iterations.
             - clear_gpu_memory (bool, optional): Clear GPU memory during computation.
             - calibration_method (str, optional): "scale_by_magnitude" or None.
+        max_size: Optional maximum expected size to validate against (skips if mismatch).
+                Useful for skipping non-max subnets during profiling.
     """
 
-    def __init__(self, linear_layer: nn.Linear, activation_hooks_kwargs: dict):
+    def __init__(
+        self, linear_layer: nn.Linear, activation_hooks_kwargs: dict, max_size: int | None = None
+    ):
         """Initialize the iterative channel contribution hook."""
         self.weight_matrix = linear_layer.weight
         self.num_channels = linear_layer.in_features
+        self.max_size = max_size
         self.pruning_iters = activation_hooks_kwargs["validation_full_iters"]
         self.clear_gpu_memory = activation_hooks_kwargs.get("clear_gpu_memory", False)
         self.curr_iter = 0
@@ -201,6 +206,11 @@ class IterativeChannelContributionHook(ForwardHook):
             output: Output tensor of shape (B, T, E).
         """
         activations = args[0]
+
+        # Don't aggregate activations from non-max subnets (e.g. from profiling)
+        if self.max_size is not None and activations.shape[-1] != self.max_size:
+            return
+
         n_channels_to_prune = self.pruning_schedule[self.curr_iter]
 
         curr_activations = activations.clone()  # Shape B,T,I
