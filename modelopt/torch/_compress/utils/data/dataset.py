@@ -223,7 +223,7 @@ class ConstantLengthDataset(IterableDataset):
         return cu_seqlens
 
 
-## Adapted from https://github.com/bigcode-project/Megatron-LM/blob/6c4bf908df8fd86b4977f54bf5b8bd4b521003d1/megatron/data/gpt_dataset.py
+## Adapted from https://github.com/NVIDIA/Megatron-LM/blob/6c4bf908df8fd86b4977f54bf5b8bd4b521003d1/megatron/data/gpt_dataset.py
 def permute(
     sample,
     np_rng,
