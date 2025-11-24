@@ -61,6 +61,21 @@ class ForwardHook(ABC):
         """
         ...
 
+    @abstractmethod
+    def accumulate(self) -> torch.Tensor:
+        """Return accumulated importance scores.
+
+        This method should be called after all forward passes to retrieve
+        the final importance scores for each channel/feature.
+
+        Returns:
+            Tensor of importance scores, one per channel/feature.
+
+        Raises:
+            AssertionError: If no activations have been collected yet.
+        """
+        ...
+
 
 class L2NormHook(ForwardHook):
     """Hook for accumulating activation statistics for importance estimation.
@@ -249,3 +264,11 @@ class IterativeChannelContributionHook(ForwardHook):
             "score": score.cpu(),
             "channels_importance_ascending": channels_importance_ascending.cpu(),
         }
+
+    def accumulate(self) -> torch.Tensor:
+        """Return importance scores as a tensor (compatible with L2NormHook interface).
+
+        Returns:
+            Tensor of importance scores, one per channel. Lower scores indicate less important channels.
+        """
+        return self.to_dict()["score"]

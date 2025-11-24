@@ -58,6 +58,10 @@ def test_iterative_channel_contribution_hook():
     expected_channels_asc = torch.tensor([5, 3, 1, 4, 2, 0])
     assert torch.equal(results["channels_importance_ascending"], expected_channels_asc)
 
+    # Test that accumulate() returns the same scores as to_dict()["score"]
+    scores_from_accumulate = hook.accumulate()
+    assert torch.equal(scores_from_accumulate, expected_scores)
+
 
 def _test_l2_norm_hook(rank, size):
     """Internal test function that runs in spawned process with distributed setup."""
