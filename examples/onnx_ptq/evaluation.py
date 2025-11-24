@@ -152,8 +152,9 @@ def evaluate_accuracy(
 
         # Calculate accuracy
         outputs = outputs[0] if isinstance(outputs, list) else outputs.data
-
         labels_size = labels.size(0)
+        outputs = outputs[:labels_size]
+
         total += labels_size
 
         labels = labels.to(outputs.device)
