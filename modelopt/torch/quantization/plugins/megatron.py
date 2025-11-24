@@ -28,7 +28,10 @@ import torch
 from megatron.core.parallel_state import get_data_parallel_group
 from megatron.core.tensor_parallel.mappings import gather_from_sequence_parallel_region
 from megatron.core.transformer import MegatronModule
-from megatron.core.transformer.utils import make_sharded_tensors_for_checkpoint
+from megatron.core.transformer.utils import (
+    ensure_metadata_has_dp_cp_group,
+    make_sharded_tensors_for_checkpoint,
+)
 from megatron.core.utils import get_tensor_model_parallel_group_if_none
 
 from modelopt.torch.opt.plugins.megatron import (
@@ -285,6 +288,9 @@ class _MegatronParallelLinear(_ParallelLinear):
         return False
 
     def sharded_state_dict(self, prefix="", sharded_offsets=(), metadata=None):
+        # Ensure metadata has dp_cp_group to avoid None subscript errors
+        metadata = ensure_metadata_has_dp_cp_group(metadata)
+
         # [WAR]: although we disable output_layer quantization by default but it will
         # still be picked up by mtq.quantize since it is a ColumnParallelLinear. We need
         # to further ensure that its sharded state_dict has no scalars or amax since
@@ -294,7 +300,7 @@ class _MegatronParallelLinear(_ParallelLinear):
         #    state_dict mismatch.
         if prefix.endswith("output_layer."):
             # assert not any("_quantizer" in k for k in self.state_dict()), "quantized output_layer"
-            return super().sharded_state_dict(prefix, sharded_offsets)
+            return super().sharded_state_dict(prefix, sharded_offsets, metadata)
 
         quantizer_state_dict = {}
         for k, v in self.state_dict(prefix="", keep_vars=True).items():
@@ -310,7 +316,7 @@ class _MegatronParallelLinear(_ParallelLinear):
                     "Please use regular state_dict."
                 )
         sharded_axis_dict = self._get_shard_axis_dict(quantizer_state_dict)
-        sharded_state_dict = super().sharded_state_dict(prefix, sharded_offsets)
+        sharded_state_dict = super().sharded_state_dict(prefix, sharded_offsets, metadata)
         sharded_state_dict.update(
             **make_sharded_tensors_for_checkpoint(
                 quantizer_state_dict, prefix, sharded_axis_dict, sharded_offsets

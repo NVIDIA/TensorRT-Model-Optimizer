@@ -17,7 +17,10 @@
 
 import megatron.core.transformer.mlp as megatron_mlp
 from megatron.core.tensor_parallel.layers import ColumnParallelLinear, RowParallelLinear
-from megatron.core.transformer.utils import make_sharded_tensors_for_checkpoint
+from megatron.core.transformer.utils import (
+    ensure_metadata_has_dp_cp_group,
+    make_sharded_tensors_for_checkpoint,
+)
 
 from modelopt.torch.opt.plugins.megatron import _MegatronMLP
 
@@ -30,7 +33,10 @@ class _MegatronParallelLinear(SparseModule):
         raise NotImplementedError
 
     def sharded_state_dict(self, prefix="", sharded_offsets=(), metadata=None):
-        sharded_state_dict = super().sharded_state_dict(prefix, sharded_offsets)
+        # Ensure metadata has dp_cp_group to avoid None subscript errors
+        metadata = ensure_metadata_has_dp_cp_group(metadata)
+
+        sharded_state_dict = super().sharded_state_dict(prefix, sharded_offsets, metadata)
 
         sparse_state_dict = {
             k: v
