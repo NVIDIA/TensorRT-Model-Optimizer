@@ -56,7 +56,7 @@ from megatron.core.transformer.moe.shared_experts import SharedExpertMLP
 from megatron.core.transformer.transformer_layer import TransformerLayer
 
 from modelopt.torch.nas.modules import DynamicModuleList
-from modelopt.torch.nas.plugins.hooks import L2NormHook
+from modelopt.torch.nas.plugins.megatron_hooks import L2NormHook
 from modelopt.torch.opt.dynamic import DynamicModule
 from modelopt.torch.opt.hparam import HPType
 from modelopt.torch.opt.searcher import ConstraintsDict

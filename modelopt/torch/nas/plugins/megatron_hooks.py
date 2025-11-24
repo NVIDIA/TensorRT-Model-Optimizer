@@ -12,7 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Forward hooks for activation-based importance estimation in NAS plugins."""
+"""Forward hooks for activation-based importance estimation (megatron NAS plugin)."""
 
 from abc import ABC, abstractmethod
 
