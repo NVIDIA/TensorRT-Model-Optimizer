@@ -404,14 +404,7 @@ def _DEBUG_calculate_per_token_entropy(batch_outputs, logits, i_batch):
     # calculate the per token entropy and per token top p
     entropy = calc_entropy(logits).cpu()  # .view(-1)#.tolist()
     msftm = confidence_max_softmax(logits).cpu()  # .view(-1)#.tolist()
-    teacher_dir = (
-        "/lustre/fsw/portfolios/coreai/projects/coreai_nvfm_llm/models/"
-        "meta-llama/Meta-Llama-3.1-70B-Instruct-new_rope/"
-    )
-    # teacher_dir = (
-    #     '/lustre/fsw/portfolios/coreai/projects/coreai_nvfm_llm/models/'
-    #     'meta-llama/Meta-Llama-3.1-405B-Instruct/'
-    # )
+    teacher_dir = ".../meta-llama/Meta-Llama-3.1-70B-Instruct-new_rope/"
     file_path = f"{teacher_dir}/validation/per_token_stats_{i_batch}.pth"
     os.makedirs(os.path.dirname(file_path), exist_ok=True)
     torch.save({"entropy": entropy, "max_softmax": msftm}, file_path)
