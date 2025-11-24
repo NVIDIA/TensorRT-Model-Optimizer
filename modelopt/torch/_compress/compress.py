@@ -23,10 +23,10 @@ using MIP-based NAS search algorithm.
 import build_library_and_stats
 import mip_and_realize_models
 import pruning_ckpts
-import score_pruning_activations
+import modelopt.torch._compress.activation_scoring.score_pruning_activations as score_pruning_activations
 import scoring
 from omegaconf import DictConfig
-from puzzle_tools.runtime import IRuntime
+from modelopt.torch._compress.tools.runtime import IRuntime
 
 from modelopt.torch._compress.tools.hydra_utils import initialize_hydra_config_for_dir
 
