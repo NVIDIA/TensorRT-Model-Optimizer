@@ -147,13 +147,14 @@ def _test_mcore_gpt_pruning(
             assert pruning_scores["layer_scores"][2] == pytest.approx(1.792158305644989, abs=1e-5)
 
             # Validate decoder.layers.0.mlp activations
-            mlp_0_acts = rank_0_activations["decoder.layers.0.mlp"]
+            mlp_0_acts = rank_0_activations["decoder.layers.0.mlp"]["activations"]
+
             assert mlp_0_acts.min().item() == pytest.approx(0.0011843212, abs=1e-5)
             assert mlp_0_acts.max().item() == pytest.approx(1.0846971273, abs=1e-5)
             assert mlp_0_acts.mean().item() == pytest.approx(0.0535472594, abs=1e-5)
 
             # Validate decoder.layers.1.mlp activations
-            mlp_1_acts = rank_0_activations["decoder.layers.1.mlp"]
+            mlp_1_acts = rank_0_activations["decoder.layers.1.mlp"]["activations"]
             assert mlp_1_acts.min().item() == pytest.approx(0.0002450741, abs=1e-5)
             assert mlp_1_acts.max().item() == pytest.approx(1.1014972925, abs=1e-5)
             assert mlp_1_acts.mean().item() == pytest.approx(0.0904172808, abs=1e-5)
@@ -166,7 +167,7 @@ def _test_mcore_gpt_pruning(
 
             # Validate decoder.layers.0.self_attention activations
             assert "decoder.layers.0.self_attention" in rank_0_activations
-            attn_0_acts = rank_0_activations["decoder.layers.0.self_attention"]
+            attn_0_acts = rank_0_activations["decoder.layers.0.self_attention"]["activations"]
             assert attn_0_acts.shape == torch.Size([256])
             assert attn_0_acts.min().item() == pytest.approx(0.03729403391480446, abs=1e-5)
             assert attn_0_acts.max().item() == pytest.approx(0.3653244972229004, abs=1e-5)
@@ -174,7 +175,7 @@ def _test_mcore_gpt_pruning(
 
             # Validate decoder.layers.1.self_attention activations
             assert "decoder.layers.1.self_attention" in rank_0_activations
-            attn_1_acts = rank_0_activations["decoder.layers.1.self_attention"]
+            attn_1_acts = rank_0_activations["decoder.layers.1.self_attention"]["activations"]
             assert attn_1_acts.shape == torch.Size([256])
             assert attn_1_acts.min().item() == pytest.approx(0.140824556350708, abs=1e-5)
             assert attn_1_acts.max().item() == pytest.approx(1.0845409631729126, abs=1e-5)

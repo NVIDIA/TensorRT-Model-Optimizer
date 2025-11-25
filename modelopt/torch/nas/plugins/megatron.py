@@ -1553,15 +1553,16 @@ class _DynamicMCoreLanguageModel(DynamicModule):
 
     def get_activations_and_layer_scores(
         self,
-    ) -> tuple[list[dict[str, torch.Tensor]], dict[int, torch.Tensor]]:
+    ) -> tuple[list[dict[str, dict]], dict[int, torch.Tensor]]:
         """Get the per-rank activations and layer scores from the module."""
         local_activations = {}
         for n, m in self.named_modules():
             # TODO: Remove legacy _activations check once all modules use _activation_hook
             if hasattr(m, "_activations"):
                 local_activations[n] = m._activations
-            elif hasattr(m, "_activation_hook") and m._activation_hook._activations is not None:
-                local_activations[n] = m._activation_hook._activations
+            elif hasattr(m, "_activation_hook"):
+                local_activations[n] = m._activation_hook.state_dict()
+
         activations_per_rank = dist.allgather(
             local_activations, group=get_pipeline_model_parallel_group()
         )
@@ -1573,14 +1574,14 @@ class _DynamicMCoreLanguageModel(DynamicModule):
 
     def set_activations_and_layer_scores(
         self,
-        activations_per_rank: list[dict[str, torch.Tensor]],
+        activations_per_rank: list[dict[str, dict]],
         layer_scores: dict[int, torch.Tensor],
     ) -> None:
         """Set the pre-computed layer_scores and per-rank activations instead of running forward.
 
         Args:
             layer_scores: Dict from layer_number (1-indexed) to score.
-            activations_per_rank: List of dicts from module name to activations. Should match PP size.
+            activations_per_rank: List of dicts from module name to state dict. Should match PP size.
         """
         rank = get_pipeline_model_parallel_rank()
         pp_size = get_pipeline_model_parallel_world_size()
@@ -1594,7 +1595,7 @@ class _DynamicMCoreLanguageModel(DynamicModule):
             if hasattr(m, "_activations"):
                 m._activations = activations_per_rank[rank][n]
             elif hasattr(m, "_activation_hook"):
-                m._activation_hook._activations = activations_per_rank[rank][n]
+                m._activation_hook.load_state_dict(activations_per_rank[rank][n])
 
 
 def drop_mcore_language_model_layers(model: nn.Module, *, layers_to_drop: list[int]) -> None:

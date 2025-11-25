@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Unit tests for megatronhooks."""
+"""Unit tests for hooks."""
 
 import torch
 import torch.nn as nn
@@ -24,7 +24,7 @@ skip_if_no_megatron()
 from _test_utils.torch.distributed.utils import spawn_multiprocess_job
 from megatron.core.parallel_state import initialize_model_parallel
 
-from modelopt.torch.nas.plugins.megatron_hooks import IterativeChannelContributionHook, L2NormHook
+from modelopt.torch.nas.plugins.hooks import IterativeChannelContributionHook, L2NormHook
 
 
 def test_iterative_channel_contribution_hook():

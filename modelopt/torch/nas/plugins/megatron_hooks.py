@@ -76,6 +76,25 @@ class ForwardHook(ABC):
         """
         ...
 
+    @abstractmethod
+    def state_dict(self) -> dict:
+        """Return the internal state for checkpointing.
+
+        Returns:
+            dict: State dictionary containing checkpoint data.
+                  Can contain tensors, ints, lists, etc.
+        """
+        ...
+
+    @abstractmethod
+    def load_state_dict(self, state_dict: dict) -> None:
+        """Load the internal state from a checkpoint.
+
+        Args:
+            state_dict: State dictionary previously returned by state_dict()
+        """
+        ...
+
 
 class L2NormHook(ForwardHook):
     """Hook for accumulating activation statistics for importance estimation.
@@ -131,6 +150,14 @@ class L2NormHook(ForwardHook):
         # Convert squared sum to L2 norm
         return self._activations.pow(0.5)
 
+    def state_dict(self) -> dict:
+        """Return the state dictionary containing accumulated activations."""
+        return {"activations": self._activations}
+
+    def load_state_dict(self, state_dict: dict) -> None:
+        """Load accumulated activations from checkpoint."""
+        self._activations = state_dict["activations"]
+
 
 def get_pruning_schedule(num_channels, pruning_iters):
     """Spending decreases monotonically when num_channels >= pruning_iters.
@@ -183,7 +210,14 @@ class IterativeChannelContributionHook(ForwardHook):
     ):
         """Initialize the iterative channel contribution hook."""
         self.weight_matrix = linear_layer.weight
-        self.num_channels = linear_layer.in_features
+
+        # Check if it's a RowParallelLinear (Megatron-Core) or nn.Linear (PyTorch)
+        # TODO: Consider better design to handle RowParallelLinear and nn.Linear
+        if hasattr(linear_layer, "input_size"):
+            self.num_channels = linear_layer.input_size  # Megatron-Core
+        else:
+            self.num_channels = linear_layer.in_features  # PyTorch
+
         self.max_size = max_size
         self.pruning_iters = activation_hooks_kwargs["validation_full_iters"]
         self.clear_gpu_memory = activation_hooks_kwargs.get("clear_gpu_memory", False)
@@ -201,14 +235,23 @@ class IterativeChannelContributionHook(ForwardHook):
         self.calibration_method = activation_hooks_kwargs.get("calibration_method")
         self.epsilon = 1e-8
 
-    def __call__(self, module: nn.Module, args: tuple[torch.Tensor], output: torch.Tensor) -> None:
+    def __call__(
+        self, module: nn.Module, args: tuple[torch.Tensor], output: torch.Tensor | tuple
+    ) -> None:
         """Compute channel contributions and prune channels according to schedule.
 
         Args:
             module: The module this hook is registered on.
             args: Tuple with input tensor of shape (B, T, I).
-            output: Output tensor of shape (B, T, E).
+            output: Output tensor of shape (B, T, E), or tuple (output_tensor, bias) for parallel layers.
         """
+        # Handle case where output is a tuple (e.g., from ColumnParallelLinear/RowParallelLinear)
+        # TODO: Consider better design to handle RowParallelLinear and nn.Linear
+        if isinstance(output, tuple):
+            output_tensor = output[0]
+        else:
+            output_tensor = output
+
         activations = args[0]
 
         # Don't aggregate activations from non-max subnets (e.g. from profiling)
@@ -222,9 +265,9 @@ class IterativeChannelContributionHook(ForwardHook):
         output_curr = F.linear(input=curr_activations, weight=self.weight_matrix)  # Shape B,T,E
 
         if self.calibration_method is None:
-            scaling_factor_per_token = torch.ones_like(output[..., 0])  # Shape B,T
+            scaling_factor_per_token = torch.ones_like(output_tensor[..., 0])  # Shape B,T
         elif self.calibration_method == "scale_by_magnitude":
-            output_norms = torch.linalg.vector_norm(output, dim=-1)  # Shape B,T
+            output_norms = torch.linalg.vector_norm(output_tensor, dim=-1)  # Shape B,T
             output_curr_norms = torch.linalg.vector_norm(output_curr, dim=-1)  # Shape B,T
             scaling_factor_per_token = output_curr_norms / (output_norms + self.epsilon)
             del output_curr_norms, output_norms
@@ -233,7 +276,7 @@ class IterativeChannelContributionHook(ForwardHook):
         del curr_activations
         clear_gpu_memory(clear=self.clear_gpu_memory)
 
-        s = scaling_factor_per_token.unsqueeze(-1) * output - output_curr  # Shape: (B, T, E)
+        s = scaling_factor_per_token.unsqueeze(-1) * output_tensor - output_curr  # Shape: (B, T, E)
         s_squared_per_token = torch.sum(s**2, dim=-1)  # Shape: (B, T)
         b = s @ self.weight_matrix  # Shape: (B, T, I)
         c = torch.sum(self.weight_matrix**2, dim=0)  # Shape: (I)
@@ -286,3 +329,26 @@ class IterativeChannelContributionHook(ForwardHook):
             Tensor of importance scores, one per channel. Lower scores indicate less important channels.
         """
         return self.to_dict()["score"]
+
+    def state_dict(self) -> dict:
+        """Save the internal state for checkpointing."""
+        return {
+            "curr_iter": self.curr_iter,
+            "pruned_channels": self.pruned_channels.copy(),
+            "agg_cont_per_channel": self.agg_cont_per_channel.cpu().clone(),
+            "num_channels": self.num_channels,
+            "pruning_iters": self.pruning_iters,
+            "pruning_schedule": self.pruning_schedule.copy(),
+            "calibration_method": self.calibration_method,
+            "epsilon": self.epsilon,
+        }
+
+    def load_state_dict(self, state_dict: dict) -> None:
+        """Load the internal state from a checkpoint."""
+        self.curr_iter = state_dict["curr_iter"]
+        self.pruned_channels = state_dict["pruned_channels"].copy()
+        self.agg_cont_per_channel = state_dict["agg_cont_per_channel"].to(self.weight_matrix.device)
+        # Verify other parameters match
+        assert self.num_channels == state_dict["num_channels"], "Channel count mismatch"
+        assert self.pruning_iters == state_dict["pruning_iters"], "Iteration count mismatch"
+        assert self.pruning_schedule == state_dict["pruning_schedule"], "Pruning schedule mismatch"
