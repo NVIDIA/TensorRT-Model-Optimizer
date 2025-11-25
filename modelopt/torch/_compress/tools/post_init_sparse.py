@@ -19,6 +19,11 @@ from torch.nn.utils.prune import custom_from_mask
 
 from modelopt.torch._compress.decilm.deci_lm_hf_code.modeling_decilm import DeciLMForCausalLM
 
+"""
+Converts a state dictionary from PyTorch's pruning format (with _orig and _mask suffixes)
+into a standard format with sparsified weights.
+"""
+
 
 class SparsityMethod:
     def calculate_masks(self, state_dict: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:

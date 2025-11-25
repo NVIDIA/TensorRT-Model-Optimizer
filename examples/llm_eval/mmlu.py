@@ -259,6 +259,8 @@ def main(
             checkpoint_dir=kwargs["checkpoint_dir"],
             tokenizer=tokenizer,
             medusa_choices=medusa_choices,
+            max_seq_len=MAX_SEQ_LEN,
+            max_batch_size=1,
         )
     else:
         model = select_model(

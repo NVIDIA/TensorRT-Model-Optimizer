@@ -58,7 +58,9 @@ def convert_to_mixed_precision(
     init_conversion_max_bytes: int | None = None,
     providers: list[str] = ["cpu"],
     trt_plugins: list[str] = [],
+    trt_plugins_precision: list[str] = [],
     max_depth_of_reduction: int | None = None,
+    opset: int | None = None,
 ) -> onnx.ModelProto:
     """Convert model to mixed precision.
 
@@ -78,7 +80,11 @@ def convert_to_mixed_precision(
                                    runtime.
         providers: List of ORT execution providers.
         trt_plugins: List of TensorRT plugin library paths in .so format (compiled shared library).
+        trt_plugins_precision: List indicating the precision for each custom op.
         max_depth_of_reduction: Maximum depth of reduction for node classification.
+        opset: Target ONNX opset version. If None, uses default minimum opset based on low_precision_type
+               (22 for bf16, 13 for fp16). The opset may be automatically increased if certain operations
+               require a higher version.
 
     Returns:
         onnx.ModelProto: The converted mixed precision model.
@@ -87,12 +93,40 @@ def convert_to_mixed_precision(
     model = onnx.load(onnx_path, load_external_data=True)
     assert low_precision_type in ["fp16", "bf16"], "low_precision_type must be either fp16 or bf16"
 
+    # Get original model's opset version
+    original_opset = onnx_utils.get_opset_version(model)
+
     # Apply graph sanitization and optimizations
     # Opsets < 22 have a very limited support for bfloat16
     # Otherwise, prefer to keep the original opset version unless it's very old
-    min_opset = 22 if low_precision_type == "bf16" else 13
+    if opset is not None:
+        min_opset = opset
+        # Validate opset compatibility
+        if low_precision_type == "bf16" and opset < 22:
+            logger.warning(
+                f"Opset {opset} has limited BF16 support. Recommended minimum opset is 22. "
+                "The conversion may fail or produce unexpected results."
+            )
+        elif low_precision_type == "fp16" and opset < 13:
+            logger.warning(
+                f"Opset {opset} has limited FP16 support. Recommended minimum opset is 13. "
+                "The conversion may fail or produce unexpected results."
+            )
+        # Warn if user-specified opset is lower than original
+        if opset < original_opset:
+            logger.warning(
+                f"Specified opset {opset} is lower than the original model's opset {original_opset}. "
+                "Downgrading opset version may cause compatibility issues or conversion failures."
+            )
+    else:
+        min_opset = 22 if low_precision_type == "bf16" else 13
+
     graph_sanitizer = GraphSanitizer(
-        model, min_opset, trt_plugins=trt_plugins, max_ir_version=LATEST_IR_VERSION_SUPPORTED_BY_ORT
+        model,
+        min_opset,
+        trt_plugins=trt_plugins,
+        trt_plugins_precision=trt_plugins_precision,
+        max_ir_version=LATEST_IR_VERSION_SUPPORTED_BY_ORT,
     )
     graph_sanitizer.sanitize()
     model = graph_sanitizer.model
@@ -118,6 +152,7 @@ def convert_to_mixed_precision(
         init_max=init_max,
         custom_rule=custom_rule,
         max_depth_of_reduction=max_depth_of_reduction,
+        custom_ops_low_precision_nodes=graph_sanitizer.custom_ops_low_precision_nodes or [],
     )
 
     precision_converter = PrecisionConverter(

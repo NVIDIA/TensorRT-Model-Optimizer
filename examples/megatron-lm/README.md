@@ -20,10 +20,11 @@
 | Model | Quantization | EAGLE3 | Q-LoRA | Pruning (PP only) | Distillation |
 | :---: | :---: | :---: | :---: | :---: | :---: |
 | `moonshotai/Kimi-K2-Instruct` | ✅ | **Online** | | | |
-| `Qwen/Qwen3-{30B-A3B, 235B-A22B}` | **WAR** | **Online** | | | |
+| `Qwen/Qwen3-{30B-A3B, 235B-A22B}` | **WAR** | **Online** | | ✅ | ✅ |
 | `Qwen/Qwen3-{0.6B, 8B}` | ✅ | **Online** | | ✅ | ✅ |
 | `deepseek-ai/DeepSeek-R1` | ✅ | **Online** | | | |
 | `meta-llama/Llama-{3.1-8B, 3.1-405B, 3.2-1B}-Instruct` | ✅ | **Online** | | ✅ | ✅ |
+| `openai/gpt-oss-{20b, 120b}` | ✅ | **Online** | | ✅ | ✅ |
 
 ## Getting Started in a Local Environment
 
@@ -59,14 +60,14 @@ Provide the pretrained checkpoint path through variable `${HF_MODEL_CKPT}`:
     TP=1 \
     HF_MODEL_CKPT=<pretrained_model_name_or_path> \
     MLM_MODEL_SAVE=/tmp/Llama-3.2-1B-Instruct-FP8 \
-    bash megatron-lm/examples/post_training/modelopt/quantize.sh meta-llama/Llama-3.2-1B-Instruct fp8
+    bash Megatron-LM/examples/post_training/modelopt/quantize.sh meta-llama/Llama-3.2-1B-Instruct fp8
 
 \
     PP=1 \
     HF_MODEL_CKPT=<pretrained_model_name_or_path> \
     MLM_MODEL_LOAD=/tmp/Llama-3.2-1B-Instruct-FP8 \
     EXPORT_DIR=/tmp/Llama-3.2-1B-Instruct-Export \
-    bash megatron-lm/examples/post_training/modelopt/export.sh meta-llama/Llama-3.2-1B-Instruct
+    bash Megatron-LM/examples/post_training/modelopt/export.sh meta-llama/Llama-3.2-1B-Instruct
 
 ```
 
@@ -86,14 +87,14 @@ required for training is generated on the fly.
     TP=1 \
     HF_MODEL_CKPT=<pretrained_model_name_or_path> \
     MLM_MODEL_SAVE=/tmp/Llama-3.2-1B-Eagle3 \
-    bash megatron-lm/examples/post_training/modelopt/eagle3.sh meta-llama/Llama-3.2-1B-Instruct
+    bash Megatron-LM/examples/post_training/modelopt/eagle3.sh meta-llama/Llama-3.2-1B-Instruct
 
 \
     PP=1 \
     HF_MODEL_CKPT=<pretrained_model_name_or_path> \
     MLM_MODEL_LOAD=/tmp/Llama-3.2-1B-Eagle3 \
     EXPORT_DIR=/tmp/Llama-3.2-1B-Eagle3-Export \
-    bash megatron-lm/examples/post_training/modelopt/export.sh meta-llama/Llama-3.2-1B-Instruct
+    bash Megatron-LM/examples/post_training/modelopt/export.sh meta-llama/Llama-3.2-1B-Instruct
 ```
 
 Periodically, **acceptance length (AL)** is evaluated on MT-Bench prompts. You can find resumable
@@ -112,7 +113,7 @@ Coming soon ...
 
 Checkout pruning [getting started section](../pruning/README.md#getting-started) and [guidelines](../pruning/README.md#pruning-guidelines) for configuring pruning parameters in the pruning README.
 
-Pruning is supported for GPT and Mamba models in Pipeline Parallel mode. Available pruning options are:
+Pruning is supported for GPT and Mamba models in Pipeline Parallel mode. Available pruning dimensions are:
 
 - `TARGET_FFN_HIDDEN_SIZE`
 - `TARGET_HIDDEN_SIZE`
@@ -120,6 +121,9 @@ Pruning is supported for GPT and Mamba models in Pipeline Parallel mode. Availab
 - `TARGET_NUM_QUERY_GROUPS`
 - `TARGET_MAMBA_NUM_HEADS`
 - `TARGET_MAMBA_HEAD_DIM`
+- `TARGET_NUM_MOE_EXPERTS`
+- `TARGET_MOE_FFN_HIDDEN_SIZE`
+- `TARGET_MOE_SHARED_EXPERT_INTERMEDIATE_SIZE`
 - `TARGET_NUM_LAYERS`
 - `LAYERS_TO_DROP` (comma separated, 1-indexed list of layer numbers to directly drop)
 
@@ -130,12 +134,16 @@ PP=1 \
 TARGET_NUM_LAYERS=24 \
 HF_MODEL_CKPT=<pretrained_model_name_or_path> \
 MLM_MODEL_SAVE=Qwen3-8B-Pruned \
-bash megatron-lm/examples/post_training/modelopt/prune.sh qwen/Qwen3-8B
+bash Megatron-LM/examples/post_training/modelopt/prune.sh qwen/Qwen3-8B
 ```
 
 > [!TIP]
 > If number of layers in the model is not divisible by pipeline parallel size (PP), you can configure uneven
 > PP by setting `MLM_EXTRA_ARGS="--decoder-first-pipeline-num-layers <X> --decoder-last-pipeline-num-layers <Y>"`
+
+> [!TIP]
+> You can reuse pruning scores for pruning same model again to different architectures by setting
+> `PRUNE_ARGS="--pruning-scores-path <path_to_save_scores>"`
 
 ## Learn More About Configuration
 
@@ -146,7 +154,7 @@ quantization.
 ```sh
 \
     HF_MODEL_CKPT=<pretrained_model_name_or_path> \
-    bash megatron-lm/examples/post_training/modelopt/quantize.sh [pretrained_model_card] [qformat]
+    bash Megatron-LM/examples/post_training/modelopt/quantize.sh [pretrained_model_card] [qformat]
 ```
 
 > **❗ IMPORTANT:** `pretrained_model_card` **CANNOT** be a path to a local pretrained checkpoint.
@@ -163,7 +171,7 @@ to pass all variables instead. If you have your own script, use `${SANDBOX_ENV_S
 ```sh
 \
     SANDBOX_ENV_SETUP=<path_to_your_script> \
-    bash megatron-lm/examples/post_training/modelopt/quantize.sh [pretrained_model_card] [qformat]
+    bash Megatron-LM/examples/post_training/modelopt/quantize.sh [pretrained_model_card] [qformat]
 ```
 
 If you use our `slurm` script, then you **MUST USE** `${SANDBOX_ENV_SETUP}` (default: `./env_setup_template.sh`).
