@@ -13,7 +13,7 @@ Model Optimizer enables highly performant quantization formats including NVFP4, 
 | Pre-Requisites | Required & optional packages to use this technique | [Link](#pre-requisites) | |
 | Getting Started | Learn how to optimize your models using PTQ to reduce precision and improve inference efficiency | [Link](#getting-started) | [docs](https://nvidia.github.io/TensorRT-Model-Optimizer/guides/_onnx_quantization.html) |
 | Support Matrix | View the ONNX export supported LLM models | [Link](#onnx-export-supported-llm-models) | |
-| PyTorch to ONNX | Example scripts demonstrating how to quantize with PyTorch and then convert to ONNX | [Link](#torch-quantization-to-onnx-example-for-mxfp8-int4-or-nvfp4-precision) | |
+| PyTorch to ONNX | Example scripts demonstrating how to quantize with PyTorch and then convert to ONNX | [Link](#torch-quantization-to-onnx-export-example) | |
 | Advanced Features | Examples demonstrating use advanced ONNX quantization features | [Link](#advanced-features) | |
 | Pre-Quantized Checkpoints | Ready to deploy Hugging Face pre-quantized checkpoints | [Link](#pre-quantized-checkpoints) | |
 | Resources | Extra links to relevant resources | [Link](#resources) | |
@@ -80,7 +80,7 @@ python image_prep.py \
 
 The model can be quantized as an FP8, INT8 or INT4 model using either the CLI or Python API. For FP8 and INT8 quantization, you have a choice between `max` and `entropy` calibration algorithms. For INT4 quantization, [awq_clip](https://arxiv.org/abs/2306.00978) or [rtn_dq](https://ar5iv.labs.arxiv.org/html/2301.12017) algorithms can be chosen.
 
-> *For NVFP4 and MXFP8 ONNX, see the [PyTorch to ONNX section](#torch-quantization-to-onnx-example-for-mxfp8-int4-or-nvfp4-precision).*
+> *For NVFP4 and MXFP8 ONNX, see the [PyTorch to ONNX section](#torch-quantization-to-onnx-export-example).*
 
 > *Minimum opset requirements: int8 (13+), fp8 (21+), int4 (21+). ModelOpt will automatically upgrade lower opset versions to meet these requirements.*
 
@@ -111,12 +111,12 @@ quantize(
 
 ### Evaluate the quantized ONNX model
 
-The following evaluation requires the `val` directory of the [ImageNet dataset](https://www.kaggle.com/c/imagenet-object-localization-challenge/data). Alternatively, you can prepare it from [this](https://huggingface.co/datasets/mrm8488/ImageNet1K-val) Hugging Face dataset. Once you have it, the quantized ONNX ViT model can be evaluated on the ImageNet dataset as follows:
+The evaluation script automatically downloads and uses the [ILSVRC/imagenet-1k](https://huggingface.co/datasets/ILSVRC/imagenet-1k) dataset from Hugging Face. This gated repository requires authentication via Hugging Face access token. See <https://huggingface.co/docs/hub/en/security-tokens> for details. The quantized ONNX ViT model can be evaluated on the ImageNet dataset as follows:
 
 ```bash
 python evaluate.py \
     --onnx_path=<path to classification model> \
-    --imagenet_path=<path to the ImageNet dataset> \
+    --imagenet_path=<HF dataset card or local path to the ImageNet dataset> \
     --engine_precision=stronglyTyped \
     --model_name=vit_base_patch16_224
 ```
@@ -129,9 +129,9 @@ The top5 accuracy of the model is <accuracy score between 0-100%>
 Inference latency of the model is <X> ms
 ```
 
-## Torch quantization to ONNX example for MXFP8, INT4 or NVFP4 precision
+## Torch quantization to ONNX export example
 
-This example demonstrates how to quantize a [timm](https://github.com/huggingface/pytorch-image-models) vision model using MXFP8, INT4 or NVFP4 precision formats, and then export it to ONNX. The script leverages the ModelOpt toolkit for both quantization and ONNX export.
+This example demonstrates how to quantize a [timm](https://github.com/huggingface/pytorch-image-models) vision model for various precision formats followed by export to ONNX. The script leverages the ModelOpt toolkit for both quantization and ONNX export.
 
 > *Opset 20 is used to export the torch models to ONNX.*
 
@@ -148,20 +148,20 @@ This example demonstrates how to quantize a [timm](https://github.com/huggingfac
 ```bash
 python torch_quant_to_onnx.py \
     --timm_model_name=vit_base_patch16_224 \
-    --quantize_mode=<mxfp8|nvfp4|int4_awq> \
+    --quantize_mode=<fp8|mxfp8|int8|nvfp4|int4_awq> \
     --onnx_save_path=<path to save the exported ONNX model>
 ```
 
 ### Evaluation
 
-If the input model is of type image classification, use the following script to evaluate it.
+If the input model is of type image classification, use the following script to evaluate it. The script automatically downloads and uses the [ILSVRC/imagenet-1k](https://huggingface.co/datasets/ILSVRC/imagenet-1k) dataset from Hugging Face. This gated repository requires authentication via Hugging Face access token. See <https://huggingface.co/docs/hub/en/security-tokens> for details.
 
 > *Note: TensorRT 10.11 or later is required to evaluate the MXFP8 or NVFP4 ONNX models.*
 
 ```bash
 python evaluate.py \
     --onnx_path=<path to the exported ONNX model> \
-    --imagenet_path=<path to the ImageNet dataset> \
+    --imagenet_path=<HF dataset card or local path to the ImageNet dataset> \
     --engine_precision=stronglyTyped \
     --model_name=vit_base_patch16_224
 ```

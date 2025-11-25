@@ -15,6 +15,7 @@
 
 import os
 import re
+from pathlib import Path
 
 import torch
 import torch.nn.functional as F
@@ -68,10 +69,26 @@ def filter_func_ltx_video(name: str) -> bool:
     return pattern.match(name) is not None
 
 
-def load_calib_prompts(batch_size, calib_data_path="Gustavosta/Stable-Diffusion-Prompts"):
-    dataset = load_dataset(calib_data_path)
-    _to_list = list(dataset["train"]["Prompt"])
-    return [_to_list[i : i + batch_size] for i in range(0, len(_to_list), batch_size)]
+def filter_func_wan_video(name: str) -> bool:
+    """Filter function specifically for LTX-Video models."""
+    pattern = re.compile(r".*(patch_embedding|condition_embedder).*")
+    return pattern.match(name) is not None
+
+
+def load_calib_prompts(
+    batch_size,
+    calib_data_path: str | Path = "Gustavosta/Stable-Diffusion-Prompts",
+    split="train",
+    column="Prompt",
+) -> list[list[str]]:
+    prompt_list: list[str] = []
+    if isinstance(calib_data_path, Path):
+        with open(calib_data_path) as f:
+            prompt_list = f.readlines()
+    else:
+        dataset = load_dataset(calib_data_path)
+        prompt_list = list(dataset[split][column])
+    return [prompt_list[i : i + batch_size] for i in range(0, len(prompt_list), batch_size)]
 
 
 def load_calib_images(folder_path):
