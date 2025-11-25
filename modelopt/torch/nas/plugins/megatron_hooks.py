@@ -12,7 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Forward hooks for activation-based importance estimation in NAS plugins."""
+"""Forward hooks for activation-based importance estimation (megatron NAS plugin)."""
 
 import gc
 from abc import ABC, abstractmethod
@@ -100,6 +100,10 @@ class L2NormHook(ForwardHook):
         # Gather input [seq_len, batch_size, hidden_size] over all TP regions
         # NOTE: This is not used at the moment since we restrict to TP=1
         input_tensor = gather_from_tensor_model_parallel_region(args[0]).detach()
+
+        if input_tensor.dim() == 2:
+            # For sparse experts, there is no batch dimension.
+            input_tensor = input_tensor[:, None, :]
 
         # Dont aggregate activations from non-max subnets (e.g. from profiling)
         if self.max_size is not None and input_tensor.shape[-1] != self.max_size:
