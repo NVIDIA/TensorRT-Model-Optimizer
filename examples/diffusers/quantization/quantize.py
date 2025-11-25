@@ -760,6 +760,9 @@ class Quantizer:
         self.logger.info("Disabling specific quantizers...")
         mtq.disable_quantizer(backbone, model_filter_func)
 
+        check_conv_and_mha(
+            backbone, self.config.format == QuantFormat.FP4, self.config.quantize_mha
+        )
         mtq.print_quant_summary(backbone)
 
         self.logger.info("Quantization completed successfully")
@@ -816,7 +819,6 @@ class ExportManager:
         backbone: torch.nn.Module,
         model_type: ModelType,
         quant_format: QuantFormat,
-        quantize_mha: bool,
     ) -> None:
         """
         Export model to ONNX format.
@@ -831,7 +833,6 @@ class ExportManager:
             return
 
         self.logger.info(f"Starting ONNX export to {self.config.onnx_dir}")
-        check_conv_and_mha(backbone, quant_format == QuantFormat.FP4, quantize_mha)
 
         if quant_format == QuantFormat.FP8 and self._has_conv_layers(backbone):
             self.logger.info(
@@ -1123,7 +1124,6 @@ def main() -> None:
             backbone,
             model_config.model_type,
             quant_config.format,
-            quantize_mha=quant_config.quantize_mha,
         )
         logger.info(
             f"Quantization process completed successfully! Time taken = {time.time() - s} seconds"
