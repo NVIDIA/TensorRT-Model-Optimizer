@@ -13,6 +13,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # mypy: ignore-errors
+
+"""TODO Add description"""
+
 import argparse
 import json
 import time
@@ -46,12 +49,12 @@ from modelopt.torch._compress.tools.logger import mprint
 Usage example - remove all/some routed experts:
 ===============================================
 
-PARENT_DIR="/lustre/fsw/portfolios/coreai/projects/coreai_nvfm_llm/models/meta-llama/Llama-4-Scout-17B-16E-Instruct--deci-hf"
+PARENT_DIR=".../meta-llama/Llama-4-Scout-17B-16E-Instruct--deci-hf"
 
 MLP_INIT_MODE="ConcatExpertsIntoDenseFFN"
 
 ## remove all routed experts, turn the shared expert into a dense FFN
-# OUTPUT_DIR="/lustre/fsw/portfolios/coreai/users/tronen/scratch/micro_scout/Scout-remove-routed-experts"
+# OUTPUT_DIR="/.../micro_scout/Scout-remove-routed-experts"
 # MODEL_CONFIG_OVERRIDES_JSON='
 # {
 #     "ffn": [
@@ -66,7 +69,7 @@ MLP_INIT_MODE="ConcatExpertsIntoDenseFFN"
 # '
 
 ## concat the shared expert with one routed expert into a dense FFN
-OUTPUT_DIR="/lustre/fsw/portfolios/coreai/users/tronen/scratch/micro_scout/Scout-ConcatExpertsIntoDenseFFN-concat-shared-and-3-routed"
+OUTPUT_DIR=".../scratch/micro_scout/Scout-ConcatExpertsIntoDenseFFN-concat-shared-and-3-routed"
 MODEL_CONFIG_OVERRIDES_JSON='
 {
     "ffn": [
