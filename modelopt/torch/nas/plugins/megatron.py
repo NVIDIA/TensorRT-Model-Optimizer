@@ -1590,12 +1590,11 @@ class _DynamicMCoreLanguageModel(DynamicModule):
         for layer in self.decoder.layers:
             layer._scores = layer_scores[layer.layer_number]
         for n, m in self.named_modules():
-            if n in activations_per_rank[rank]:
-                # TODO: Remove legacy _activations check once all modules use _activation_hook
-                if hasattr(m, "_activations"):
-                    m._activations = activations_per_rank[rank][n]
-                elif hasattr(m, "_activation_hook"):
-                    m._activation_hook._activations = activations_per_rank[rank][n]
+            # TODO: Remove legacy _activations check once all modules use _activation_hook
+            if hasattr(m, "_activations"):
+                m._activations = activations_per_rank[rank][n]
+            elif hasattr(m, "_activation_hook"):
+                m._activation_hook._activations = activations_per_rank[rank][n]
 
 
 def drop_mcore_language_model_layers(model: nn.Module, *, layers_to_drop: list[int]) -> None:
