@@ -87,7 +87,7 @@ echo ""
 echo "MODEL_CONFIG_OVERRIDES_JSON:"
 echo "${MODEL_CONFIG_OVERRIDES_JSON}"
 
-python -m bypassed_training.init_child_from_parent \
+python -m modelopt.torch._compress.tools.bypassed_training.init_child_from_parent  \
     --parent_checkpoint_dir="$PARENT_DIR" \
     --model_config_overrides_json="$MODEL_CONFIG_OVERRIDES_JSON" \
     --output_checkpoint_dir="$OUTPUT_DIR" \
