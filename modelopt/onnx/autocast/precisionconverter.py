@@ -955,6 +955,13 @@ class PrecisionConverter:
         # Remove redundant casts
         self._remove_redundant_casts()
 
+        # Update value_info in model's graph
+        self._update_value_info_in_graph()
+
+    def _update_value_info_in_graph(self):
+        for vi in self.model.graph.value_info:
+            vi.type.tensor_type.elem_type = self.value_info_map[vi.name].type.tensor_type.elem_type
+
     def _cleanup_no_consumer_nodes(self):
         network_outputs = {o.name for o in self.model.graph.output}
         nodes_to_remove = [
