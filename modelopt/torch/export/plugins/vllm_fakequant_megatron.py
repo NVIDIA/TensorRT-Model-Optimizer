@@ -68,18 +68,25 @@ def gather_mcore_vllm_fq_quantized_state_dict(
 
 class VllmFqGPTModelExporter(GPTModelExporter):
     """VLLM fakequant GPTModel exporter."""
-    def save_pretrained(self, save_directory: str | os.PathLike, pretrained_model_name_or_path: str | os.PathLike | None = None):
+
+    def save_pretrained(
+        self,
+        save_directory: str | os.PathLike,
+        pretrained_model_name_or_path: str | os.PathLike | None = None,
+    ):
         os.makedirs(save_directory, exist_ok=True)
         gather_mcore_vllm_fq_quantized_state_dict(self.model, self.state_dict, save_directory)
         assert not (self.is_multimodal and pretrained_model_name_or_path is not None), (
             "Exporting weights in bf16 and amax values is not supported for multimodal models when pretrained_model_name_or_path is not None"
-            )
-        assert not self.export_extra_modules, "Exporting extra modules is not supported for vLLM fakequant"
+        )
+        assert not self.export_extra_modules, (
+            "Exporting extra modules is not supported for vLLM fakequant"
+        )
         super().save_pretrained(save_directory, pretrained_model_name_or_path)
-    
+
     def _get_quantization_format(self, module: torch.nn.Module):
         return QUANTIZATION_NONE
-        
+
 
 def export_mcore_gpt_to_hf_vllm_fq(
     model: torch.nn.Module,

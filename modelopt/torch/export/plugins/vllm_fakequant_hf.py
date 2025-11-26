@@ -53,9 +53,9 @@ def export_hf_vllm_fq_checkpoint(
     # remove quantizer from model
     for _, module in model.named_modules():
         if is_quantlinear(module):
-            delattr(module, "weight_quantizer")
-            delattr(module, "input_quantizer")
-            delattr(module, "output_quantizer")
+            for attr in ["weight_quantizer", "input_quantizer", "output_quantizer"]:
+                if hasattr(module, attr):
+                    delattr(module, attr)
             module.export()
     torch.save(amax_dict, f"{export_dir}/quant_amax.pth")
     # Save model
