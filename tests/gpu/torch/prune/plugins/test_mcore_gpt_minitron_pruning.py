@@ -93,24 +93,7 @@ def _test_mcore_gpt_pruning(
 
     model = _get_model()
 
-    # # Set seeds for deterministic dummy input generation AFTER model initialization
-    # # (get_mcore_gpt_model calls initialize_for_megatron which sets seed=1234)
-    # torch.manual_seed(1234)
-    # torch.cuda.manual_seed_all(1234)
-    # # Enable deterministic behavior for cuDNN
-    # torch.backends.cudnn.deterministic = True
-    # torch.backends.cudnn.benchmark = False
-
     sd = model.state_dict()
-
-    # Debug: Check weight initialization
-    if rank == 0:
-        print("\n=== Weight Initialization Check ===")
-        qkv_key = "decoder.layers.0.self_attention.linear_qkv.weight"
-        if qkv_key in sd:
-            qkv_weight = sd[qkv_key]
-            print(f"{qkv_key}: mean={qkv_weight.mean().item():.16f}")
-        print("=" * 50 + "\n")
 
     def forward_loop(m):
         for _ in range(5):
@@ -274,14 +257,14 @@ def _test_mcore_gpt_pruning(
     [
         # MHA - pruned ffn/4
         (8, 8, "squared_relu", "LayerNorm", 4, 1, 1, 1, 1, False, "rope", False, False),
-        # # GQA - pruned attention/2
-        # (8, 4, "squared_relu", "RMSNorm", 1, 2, 2, 1, 1, False, "rope", False, False),
-        # # GQA - pruned hidden_size/4
-        # (8, 4, "swiglu", "RMSNorm", 1, 1, 1, 4, 1, False, "rope", True, False),
-        # # MHA - pruned num_layers/2
-        # (8, 8, "swiglu", "LayerNorm", 1, 1, 1, 1, 2, False, "rope", False, False),
-        # # GQA - pruned all/2, uneven pp
-        # (8, 4, "swiglu", "RMSNorm", 2, 2, 2, 2, 2, True, "yarn", False, True),
+        # GQA - pruned attention/2
+        (8, 4, "squared_relu", "RMSNorm", 1, 2, 2, 1, 1, False, "rope", False, False),
+        # GQA - pruned hidden_size/4
+        (8, 4, "swiglu", "RMSNorm", 1, 1, 1, 4, 1, False, "rope", True, False),
+        # MHA - pruned num_layers/2
+        (8, 8, "swiglu", "LayerNorm", 1, 1, 1, 1, 2, False, "rope", False, False),
+        # GQA - pruned all/2, uneven pp
+        (8, 4, "swiglu", "RMSNorm", 2, 2, 2, 2, 2, True, "yarn", False, True),
     ],
 )
 def test_mcore_gpt_pruning(
