@@ -33,7 +33,9 @@ from torch.nn.parallel import DataParallel, DistributedDataParallel
 
 from modelopt.onnx.autocast.convert import convert_to_f16
 from modelopt.onnx.export.quant_exporter import (
+    FP8QuantExporter,
     INT4QuantExporter,
+    INT8QuantExporter,
     MXFP8QuantExporter,
     NVFP4QuantExporter,
     ONNXQuantExporter,
@@ -374,10 +376,11 @@ def quantize_weights(model: nn.Module, onnx_model: onnx.ModelProto) -> onnx.Mode
     Applies weight quantization to an ONNX model based on the quantization scheme detected
     in the PyTorch model. Supports INT4, FP4, and MXFP8 quantization formats.
 
-    The function performs a three-stage process for each detected quantization type:
-    1. Compute scales - Calculate quantization scaling factors
-    2. Compress weights - Convert weights to the target quantized format
-    3. Post-process - Apply any final transformations or cleanup
+    The function performs a four-stage process for each detected quantization type:
+    1. Pre-process - Restructure the graph for quantization
+    2. Compute scales - Calculate quantization scaling factors
+    3. Compress weights - Convert weights to the target quantized format
+    4. Post-process - Apply any final transformations or cleanup
 
     Args:
         model (nn.Module): The original PyTorch model used to detect quantization schemes.
@@ -402,6 +405,10 @@ def quantize_weights(model: nn.Module, onnx_model: onnx.ModelProto) -> onnx.Mode
         onnx_exporters.append(NVFP4QuantExporter)
     if is_mxfp8_quantized(model):
         onnx_exporters.append(MXFP8QuantExporter)
+    if is_fp8_quantized(model):
+        onnx_exporters.append(FP8QuantExporter)
+    if is_int8_quantized(model):
+        onnx_exporters.append(INT8QuantExporter)
 
     for onnx_exporter in onnx_exporters:
         onnx_model = onnx_exporter.process_model(onnx_model)
