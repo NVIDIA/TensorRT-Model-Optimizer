@@ -1560,7 +1560,7 @@ class _DynamicMCoreLanguageModel(DynamicModule):
             # TODO: Remove legacy _activations check once all modules use _activation_hook
             if hasattr(m, "_activations"):
                 local_activations[n] = m._activations
-            elif hasattr(m, "_activation_hook") and m._activation_hook._activations is not None:
+            elif hasattr(m, "_activation_hook"):
                 local_activations[n] = m._activation_hook._activations
         activations_per_rank = dist.allgather(
             local_activations, group=get_pipeline_model_parallel_group()
