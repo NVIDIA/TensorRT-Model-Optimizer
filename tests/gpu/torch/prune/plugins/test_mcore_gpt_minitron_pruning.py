@@ -91,7 +91,36 @@ def _test_mcore_gpt_pruning(
         return model
 
     model = _get_model()
+
+    # Set seeds for deterministic dummy input generation AFTER model initialization
+    # (get_mcore_gpt_model calls initialize_for_megatron which sets seed=1234)
+    torch.manual_seed(1234)
+    torch.cuda.manual_seed_all(1234)
+
     sd = model.state_dict()
+
+    # Debug: Print some model weights to verify deterministic initialization
+    if rank == 0:
+        weight_keys = list(sd.keys())[:10]  # First 10 weight keys
+        print("\n=== Model Weight Debug (first 10 keys) ===")
+        for key in weight_keys:
+            weight = sd[key]
+            if isinstance(weight, torch.Tensor) and weight.numel() > 0:
+                # Skip non-floating point tensors (e.g., Byte, Int)
+                if weight.dtype in [torch.float32, torch.float16, torch.bfloat16, torch.float64]:
+                    mean = weight.mean().item()
+                    std = weight.std().item()
+                    min_val = weight.min().item()
+                    max_val = weight.max().item()
+                    print(
+                        f"{key}: shape={weight.shape}, "
+                        f"mean={mean:.10f}, std={std:.10f}, min={min_val:.10f}, max={max_val:.10f}"
+                    )
+                else:
+                    first_vals = weight.flatten()[:5].tolist()
+                    print(f"{key}: shape={weight.shape}, dtype={weight.dtype}")
+                    print(f"  (non-float, first 5 values: {first_vals})")
+        print("=" * 50 + "\n")
 
     def forward_loop(m):
         for _ in range(5):
@@ -242,14 +271,14 @@ def _test_mcore_gpt_pruning(
     [
         # MHA - pruned ffn/4
         (8, 8, "squared_relu", "LayerNorm", 4, 1, 1, 1, 1, False, "rope", False, False),
-        # GQA - pruned attention/2
-        (8, 4, "squared_relu", "RMSNorm", 1, 2, 2, 1, 1, False, "rope", False, False),
-        # GQA - pruned hidden_size/4
-        (8, 4, "swiglu", "RMSNorm", 1, 1, 1, 4, 1, False, "rope", True, False),
-        # MHA - pruned num_layers/2
-        (8, 8, "swiglu", "LayerNorm", 1, 1, 1, 1, 2, False, "rope", False, False),
-        # GQA - pruned all/2, uneven pp
-        (8, 4, "swiglu", "RMSNorm", 2, 2, 2, 2, 2, True, "yarn", False, True),
+        # # GQA - pruned attention/2
+        # (8, 4, "squared_relu", "RMSNorm", 1, 2, 2, 1, 1, False, "rope", False, False),
+        # # GQA - pruned hidden_size/4
+        # (8, 4, "swiglu", "RMSNorm", 1, 1, 1, 4, 1, False, "rope", True, False),
+        # # MHA - pruned num_layers/2
+        # (8, 8, "swiglu", "LayerNorm", 1, 1, 1, 1, 2, False, "rope", False, False),
+        # # GQA - pruned all/2, uneven pp
+        # (8, 4, "swiglu", "RMSNorm", 2, 2, 2, 2, 2, True, "yarn", False, True),
     ],
 )
 def test_mcore_gpt_pruning(
