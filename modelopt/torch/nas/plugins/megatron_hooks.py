@@ -96,7 +96,7 @@ class ForwardHook(ABC):
         ...
 
 
-class L2NormHook(ForwardHook):
+class MegatronL2NormHook(ForwardHook):
     """Hook for accumulating activation statistics for importance estimation.
 
     Activations are computed as mean over seq_len and then squared and summed over batch_size.

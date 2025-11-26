@@ -18,7 +18,7 @@ from pathlib import Path
 import hydra
 import torch
 from omegaconf import DictConfig
-from utils.parsing import format_global_config
+from modelopt.torch._compress.utils.parsing import format_global_config
 
 from modelopt.torch._compress.tools.hydra_utils import register_hydra_resolvers
 from modelopt.torch._compress.tools.logger import mprint
