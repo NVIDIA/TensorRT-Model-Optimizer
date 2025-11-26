@@ -98,7 +98,7 @@ def _test_l2_norm_hook(rank, size):
 
 
 def test_l2_norm_hook():
-    """Test L2NormHook returns correct scores after accumulating activations."""
+    """Test MegatronL2NormHook returns correct scores after accumulating activations."""
     spawn_multiprocess_job(
         size=1,
         job=_test_l2_norm_hook,
