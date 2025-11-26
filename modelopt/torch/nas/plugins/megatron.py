@@ -55,7 +55,6 @@ from megatron.core.transformer.moe.router import TopKRouter
 from megatron.core.transformer.moe.shared_experts import SharedExpertMLP
 from megatron.core.transformer.transformer_layer import TransformerLayer
 
-from modelopt.torch.nas.modules import DynamicModuleList
 from modelopt.torch.opt.dynamic import DynamicModule
 from modelopt.torch.opt.hparam import HPType
 from modelopt.torch.opt.searcher import ConstraintsDict
@@ -77,11 +76,12 @@ from ..algorithms import (
     ConstraintsRes,
 )
 from ..hparams.concat import build_concat_hp
-from ..modules import _DynamicLayerNorm
+from ..modules import DynamicModuleList, _DynamicLayerNorm
 from ..modules.utils import get_sliced_tensor, get_sliced_tensor_by_slices
 from ..registry import DMRegistry
 from ..search_space import SampleFunc
 from ..traced_hp import TracedHp
+from .megatron_hooks import MegatronL2NormHook
 
 SUPPORTED_MODELS = {GPTModel: "megatron.core.models.gpt.GPTModel"}
 
@@ -265,39 +265,19 @@ class _DynamicMLP(DynamicModule):
         # can be discarded.
         # This limitation might be fixed in OMNIML-180 (Flexible Importance Estimator)
         # where we separate the importance estimation from the dynamic module.
-        self._register_temp_attribute("_activations", None)
-        self.hook_handle = self.linear_fc2.register_forward_hook(self._linear_fc2_forward_hook)
+        max_ffn_size = int(self.get_hparam(self.hparam_name).max)  # type: ignore[arg-type]
+        activation_hook = MegatronL2NormHook(max_size=max_ffn_size)
+        self._register_temp_attribute("_activation_hook", activation_hook)
+        # TODO: confusion: why hook_handle is removed manually in export() and not using _register_temp_attribute?
+        self.hook_handle = self.linear_fc2.register_forward_hook(activation_hook)
         ffn_hidden_size.register_importance(self._estimate_importance)
-
-    def _linear_fc2_forward_hook(self, module, input, output):
-        """Hook to collect activations for importance estimation.
-
-        Activations are computed as mean over seq_len and then squared and summed over batch_size.
-        Later we take the square root of the sum to get the L2 norm.
-        """
-        # Gather input [seq_len, batch_size, ffn_hidden_size] over all TP regions
-        # NOTE: This is not used at the moment since we restrict to TP=1
-        input = gather_from_tensor_model_parallel_region(input[0]).detach()
-        if input.dim() == 2:
-            # For sparse experts, there is no batch dimension.
-            input = input[:, None, :]
-        # Dont aggregate activations from non-max subnets (e.g. from profiling)
-        if input.shape[-1] != self.get_hparam(self.hparam_name).max:
-            return
-
-        input = input.to(torch.float32)  # use full precision to avoid overflow
-        activations = input.abs().mean(dim=0)  # [batch_size, ffn_hidden_size]
-        activations = activations.pow(2).sum(dim=0)  # [ffn_hidden_size]
-        if self._activations is None:
-            self._activations = activations
-        else:
-            self._activations += activations
 
     def _estimate_importance(self) -> TracedHp.Importance:
         """Return the activation magnitude-based importance of the ffn_hidden_size."""
-        assert self._activations is not None, "No activations collected for importance estimation."
-        # Convert squared sum to L2 norm
-        return self._activations.pow(0.5)
+        assert self._activation_hook._activations is not None, (
+            "No activations collected for importance estimation."
+        )
+        return self._activation_hook.accumulate()
 
     def set_hidden_size_hp(self, hidden_size: TracedHp) -> None:
         """Set hidden size for shared expert."""
@@ -612,46 +592,26 @@ class _DynamicSelfAttention(DynamicModule):
         )
 
         # register importance estimator for linear_qkv.output_size and linear_proj.input_size
-        self._register_temp_attribute("_activations", None)
-        self.hook_handle = self.linear_proj.register_forward_hook(self._linear_proj_forward_hook)
+        num_heads_per_group_max = int(self.get_hparam("num_heads_per_group").max)  # type: ignore[arg-type]
+        num_query_groups_max = int(self.get_hparam("num_query_groups").max)  # type: ignore[arg-type]
+        max_size = num_heads_per_group_max * num_query_groups_max * self.config.kv_channels
+        activation_hook = MegatronL2NormHook(max_size=max_size)
+        self._register_temp_attribute("_activation_hook", activation_hook)
+        # TODO: confusion: why hook_handle is removed manually in export() and not using _register_temp_attribute?
+        self.hook_handle = self.linear_proj.register_forward_hook(activation_hook)
         # NOTE: num_heads_per_group's slice_order will be of length num_attention_heads to be able to sort heads,
         # otherwise we would only have aggregated importance of heads per group.
         # While enforcing order during `sort_parameters`, we dont check the shape of the slice_order
         num_heads_per_group.register_importance(self._estimate_all_head_importance)
         num_query_groups.register_importance(self._estimate_query_group_importance)
 
-    def _linear_proj_forward_hook(self, module, input, output):
-        """Hook to collect activations for importance estimation.
-
-        Activations are computed as mean over seq_len and then squared and summed over batch_size.
-        Later we take the square root of the sum to get the L2 norm.
-        """
-        # Gather input [seq_len, batch_size, query_projection_size] over all TP regions
-        # NOTE: This is not used at the moment since we restrict to TP=1
-        input = gather_from_tensor_model_parallel_region(input[0]).detach()
-
-        # Dont aggregate activations from non-max subnets (e.g. from profiling)
-        if (
-            input.shape[-1]
-            != self.get_hparam("num_heads_per_group").max
-            * self.get_hparam("num_query_groups").max
-            * self.config.kv_channels
-        ):
-            return
-
-        input = input.to(torch.float32)  # use full precision to avoid overflow
-        activations = input.abs().mean(dim=0)
-        activations = activations.pow(2).sum(dim=0)  # [query_projection_size]
-        if self._activations is None:
-            self._activations = activations
-        else:
-            self._activations += activations
-
     def _estimate_all_head_importance(self) -> TracedHp.Importance:
         """Return the importance for num_attention_heads (num_heads_per_group * num_query_groups)."""
-        assert self._activations is not None, "No activations collected for importance estimation."
+        assert self._activation_hook._activations is not None, (
+            "No activations collected for importance estimation."
+        )
         # Convert squared sum to L2 norm
-        scores = self._activations.pow(0.5)
+        scores = self._activation_hook.accumulate()
         attn_head_importance = torch.linalg.vector_norm(
             scores.view(
                 self.get_hparam("num_heads_per_group").max
@@ -665,9 +625,11 @@ class _DynamicSelfAttention(DynamicModule):
 
     def _estimate_query_group_importance(self) -> TracedHp.Importance:
         """Return the importance of the ``num_query_groups`` hparam."""
-        assert self._activations is not None, "No activations collected for importance estimation."
+        assert self._activation_hook._activations is not None, (
+            "No activations collected for importance estimation."
+        )
         # Convert squared sum to L2 norm
-        scores = self._activations.pow(0.5)
+        scores = self._activation_hook.accumulate()
         group_importance = torch.linalg.vector_norm(
             scores.view(
                 self.get_hparam("num_heads_per_group").max,
@@ -1594,8 +1556,11 @@ class _DynamicMCoreLanguageModel(DynamicModule):
         """Get the per-rank activations and layer scores from the module."""
         local_activations = {}
         for n, m in self.named_modules():
+            # TODO: Remove legacy _activations check once all modules use _activation_hook
             if hasattr(m, "_activations"):
                 local_activations[n] = m._activations
+            elif hasattr(m, "_activation_hook"):
+                local_activations[n] = m._activation_hook._activations
         activations_per_rank = dist.allgather(
             local_activations, group=get_pipeline_model_parallel_group()
         )
@@ -1624,8 +1589,11 @@ class _DynamicMCoreLanguageModel(DynamicModule):
         for layer in self.decoder.layers:
             layer._scores = layer_scores[layer.layer_number]
         for n, m in self.named_modules():
+            # TODO: Remove legacy _activations check once all modules use _activation_hook
             if hasattr(m, "_activations"):
                 m._activations = activations_per_rank[rank][n]
+            elif hasattr(m, "_activation_hook"):
+                m._activation_hook._activations = activations_per_rank[rank][n]
 
 
 def drop_mcore_language_model_layers(model: nn.Module, *, layers_to_drop: list[int]) -> None:
