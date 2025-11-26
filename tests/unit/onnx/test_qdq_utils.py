@@ -17,7 +17,7 @@ import numpy as np
 import pytest
 from onnx import TensorProto, helper, numpy_helper
 
-from modelopt.onnx.export.quant_exporter import INT4QuantExporter
+from modelopt.onnx.export.int4_exporter import INT4QuantExporter
 from modelopt.onnx.quantization.qdq_utils import (
     _cast_fp4,
     _cast_fp8,

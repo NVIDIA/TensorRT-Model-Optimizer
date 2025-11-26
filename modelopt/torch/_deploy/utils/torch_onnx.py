@@ -32,7 +32,7 @@ from onnxconverter_common import convert_float_to_float16
 from torch.nn.parallel import DataParallel, DistributedDataParallel
 
 from modelopt.onnx.autocast.convert import convert_to_f16
-from modelopt.onnx.export.quant_exporter import (
+from modelopt.onnx.export import (
     FP8QuantExporter,
     INT4QuantExporter,
     INT8QuantExporter,

@@ -13,9 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""ONNX quantizer exporters."""
-
-from abc import ABC, abstractmethod
+"""INT4 quantization exporter."""
 
 import onnx
 from onnx import numpy_helper
@@ -25,101 +23,7 @@ from modelopt.onnx.quantization.graph_utils import get_tensor_producer_nodes
 from modelopt.onnx.quantization.qdq_utils import cast_initializer_to_dtype
 from modelopt.onnx.quantization.quant_utils import pack_weights_to_int4
 
-
-class ONNXQuantExporter(ABC):
-    """Base class for ONNX quantizer exporters."""
-
-    @classmethod
-    def process_model(cls, onnx_model: onnx.ModelProto) -> onnx.ModelProto:
-        """Processes the ONNX model."""
-        onnx_model = cls.pre_process(onnx_model)
-        onnx_model = cls.compute_scales(onnx_model)
-        onnx_model = cls.compress_weights(onnx_model)
-        onnx_model = cls.post_process(onnx_model)
-        return onnx_model
-
-    @staticmethod
-    @abstractmethod
-    def pre_process(onnx_model: onnx.ModelProto) -> onnx.ModelProto:
-        """Pre-processes the ONNX model. Converts all DQ -> * -> op patterns to DQ -> op."""
-
-    @staticmethod
-    @abstractmethod
-    def compute_scales(onnx_model: onnx.ModelProto) -> onnx.ModelProto:
-        """Computes the scales for the weights in the ONNX model."""
-
-    @staticmethod
-    @abstractmethod
-    def compress_weights(onnx_model: onnx.ModelProto) -> onnx.ModelProto:
-        """Compresses the weights in the ONNX model."""
-
-    @staticmethod
-    @abstractmethod
-    def post_process(onnx_model: onnx.ModelProto) -> onnx.ModelProto:
-        """Post-processes the ONNX model."""
-
-
-# TODO: Implement the MXFP8QuantExporter
-class MXFP8QuantExporter(ONNXQuantExporter):
-    """Exporter for MXFP8 quantization."""
-
-    @staticmethod
-    def pre_process(onnx_model: onnx.ModelProto) -> onnx.ModelProto:
-        """Pre-processes the ONNX model for MXFP8 quantization."""
-
-    @staticmethod
-    def compute_scales(onnx_model: onnx.ModelProto) -> onnx.ModelProto:
-        """Computes the scales for the weights in the ONNX model for MXFP8 quantization."""
-
-    @staticmethod
-    def compress_weights(onnx_model: onnx.ModelProto) -> onnx.ModelProto:
-        """Compresses the weights in the ONNX model for MXFP8 quantization."""
-
-    @staticmethod
-    def post_process(onnx_model: onnx.ModelProto) -> onnx.ModelProto:
-        """Post-processes the ONNX model for MXFP8 quantization."""
-
-
-# TODO: Implement the FP8QuantExporter
-class FP8QuantExporter(ONNXQuantExporter):
-    """Exporter for FP8 quantization."""
-
-    @staticmethod
-    def pre_process(onnx_model: onnx.ModelProto) -> onnx.ModelProto:
-        """Pre-processes the ONNX model for FP8 quantization."""
-
-    @staticmethod
-    def compute_scales(onnx_model: onnx.ModelProto) -> onnx.ModelProto:
-        """Computes the scales for the weights in the ONNX model for FP8 quantization."""
-
-    @staticmethod
-    def compress_weights(onnx_model: onnx.ModelProto) -> onnx.ModelProto:
-        """Compresses the weights in the ONNX model for FP8 quantization."""
-
-    @staticmethod
-    def post_process(onnx_model: onnx.ModelProto) -> onnx.ModelProto:
-        """Post-processes the ONNX model for FP8 quantization."""
-
-
-# TODO: Implement the INT8QuantExporter
-class INT8QuantExporter(ONNXQuantExporter):
-    """Exporter for INT8 quantization."""
-
-    @staticmethod
-    def pre_process(onnx_model: onnx.ModelProto) -> onnx.ModelProto:
-        """Pre-processes the ONNX model for INT8 quantization."""
-
-    @staticmethod
-    def compute_scales(onnx_model: onnx.ModelProto) -> onnx.ModelProto:
-        """Computes the scales for the weights in the ONNX model for INT8 quantization."""
-
-    @staticmethod
-    def compress_weights(onnx_model: onnx.ModelProto) -> onnx.ModelProto:
-        """Compresses the weights in the ONNX model for INT8 quantization."""
-
-    @staticmethod
-    def post_process(onnx_model: onnx.ModelProto) -> onnx.ModelProto:
-        """Post-processes the ONNX model for INT8 quantization."""
+from .base_exporter import ONNXQuantExporter
 
 
 class INT4QuantExporter(ONNXQuantExporter):
@@ -377,24 +281,3 @@ class INT4QuantExporter(ONNXQuantExporter):
                 cast_initializer_to_dtype(node, "Half", initializer_map)
 
         return onnx_model
-
-
-# TODO: Implement the NVFP4QuantExporter
-class NVFP4QuantExporter(ONNXQuantExporter):
-    """Exporter for NVFP4 quantization."""
-
-    @staticmethod
-    def pre_process(onnx_model: onnx.ModelProto) -> onnx.ModelProto:
-        """Pre-processes the ONNX model for NVFP4 quantization."""
-
-    @staticmethod
-    def compute_scales(onnx_model: onnx.ModelProto) -> onnx.ModelProto:
-        """Computes the scales for the weights in the ONNX model for NVFP4 quantization."""
-
-    @staticmethod
-    def compress_weights(onnx_model: onnx.ModelProto) -> onnx.ModelProto:
-        """Compresses the weights in the ONNX model for NVFP4 quantization."""
-
-    @staticmethod
-    def post_process(onnx_model: onnx.ModelProto) -> onnx.ModelProto:
-        """Post-processes the ONNX model for NVFP4 quantization."""
