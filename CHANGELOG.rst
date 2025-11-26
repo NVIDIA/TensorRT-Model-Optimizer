@@ -28,7 +28,7 @@ Model Optimizer Changelog (Linux)
 **Misc**
 
 - Bump minimum recommended transformers version to 4.53.
-- Replace ONNX simplification package from 'onnxsim' to 'onnxslim'.
+- Replace ONNX simplification package from ``onnxsim`` to ``onnxslim``.
 
 0.39 (2025-11-11)
 ^^^^^^^^^^^^^^^^^
