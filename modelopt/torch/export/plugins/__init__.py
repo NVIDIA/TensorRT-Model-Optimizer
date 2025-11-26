@@ -21,3 +21,7 @@ with import_plugin("megatron_importer"):
     from .megatron_importer import *
 
 from .hf_spec_export import *
+from .vllm_fq_hf import *
+
+with import_plugin("vllm_fq_megatron"):
+    from .vllm_fq_megatron import *
