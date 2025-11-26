@@ -592,10 +592,10 @@ NVFP4_MLP_WEIGHT_ONLY_CFG = {
         "*mlp*weight_quantizer": {
             "num_bits": (2, 1),
             "block_sizes": {
-                -1: 32,
+                -1: 16,
                 "type": "dynamic",
                 "scale_bits": (4, 3),
-            },  # Note: block_size is 32 here
+            },
             "enable": True,
             "pass_through_bwd": True,
         },
