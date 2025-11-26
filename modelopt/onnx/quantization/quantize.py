@@ -39,6 +39,7 @@ from collections.abc import Sequence
 from typing import Any
 
 import onnx
+import onnxslim
 import onnx.onnx_cpp2py_export.checker as C
 import onnx_graphsurgeon as gs
 
@@ -133,16 +134,8 @@ def _preprocess_onnx(
     if simplify:
         logger.info("Attempting to simplify model")
         try:
-            import onnxsim
-        except ModuleNotFoundError as e:
-            logger.warning(
-                "onnxsim is not installed. Please install it with 'pip install onnxsim'."
-            )
-            raise e
-
-        try:
-            model_simp, check = onnxsim.simplify(onnx_model)
-            if check:
+            model_simp = onnxslim.slim(onnx_model, skip_fusion_patterns=["FusionGemm"])
+            if model_simp:
                 onnx_model = model_simp
                 onnx_path = os.path.join(output_dir, f"{model_name}_simp.onnx")
                 save_onnx(onnx_model, onnx_path, use_external_data_format)
