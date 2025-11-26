@@ -145,30 +145,17 @@ def _test_mcore_gpt_pruning(
         # Test case 1: MHA - pruned ffn/4 (num_attention_heads=8, num_query_groups=8, ffn_div=4)
         if pruned_ffn_div == 4:
             # Layer scores
-            if rank == 0:
-                print("\n=== TEST CASE 1 ===")
-                print(f"layer_scores[1] = {pruning_scores['layer_scores'][1]:.16f}")
-                print(f"layer_scores[2] = {pruning_scores['layer_scores'][2]:.16f}")
             assert pruning_scores["layer_scores"][1] == pytest.approx(2.0868452191352844, abs=1e-3)
             assert pruning_scores["layer_scores"][2] == pytest.approx(1.7638601660728455, abs=1e-3)
 
             # Validate decoder.layers.0.mlp activations
             mlp_0_acts = rank_0_activations["decoder.layers.0.mlp"]
-            if rank == 0:
-                print(f"mlp_0_acts.min() = {mlp_0_acts.min().item():.16f}")
-                print(f"mlp_0_acts.max() = {mlp_0_acts.max().item():.16f}")
-                print(f"mlp_0_acts.mean() = {mlp_0_acts.mean().item():.16f}")
             assert mlp_0_acts.min().item() == pytest.approx(0.0015609927941114, abs=1e-3)
             assert mlp_0_acts.max().item() == pytest.approx(0.3844809532165527, abs=1e-3)
             assert mlp_0_acts.mean().item() == pytest.approx(0.0629318505525589, abs=1e-3)
 
             # Validate decoder.layers.1.mlp activations
             mlp_1_acts = rank_0_activations["decoder.layers.1.mlp"]
-            if rank == 0:
-                print(f"mlp_1_acts.min() = {mlp_1_acts.min().item():.16f}")
-                print(f"mlp_1_acts.max() = {mlp_1_acts.max().item():.16f}")
-                print(f"mlp_1_acts.mean() = {mlp_1_acts.mean().item():.16f}")
-                print("=" * 50 + "\n")
             assert mlp_1_acts.min().item() == pytest.approx(0.0001484956446802, abs=1e-3)
             assert mlp_1_acts.max().item() == pytest.approx(0.7835369110107422, abs=1e-3)
             assert mlp_1_acts.mean().item() == pytest.approx(0.0926810950040817, abs=1e-3)
