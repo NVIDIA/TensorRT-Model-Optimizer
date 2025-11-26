@@ -93,13 +93,13 @@ def _test_mcore_gpt_pruning(
 
     model = _get_model()
 
-    # Set seeds for deterministic dummy input generation AFTER model initialization
-    # (get_mcore_gpt_model calls initialize_for_megatron which sets seed=1234)
-    torch.manual_seed(1234)
-    torch.cuda.manual_seed_all(1234)
-    # Enable deterministic behavior for cuDNN
-    torch.backends.cudnn.deterministic = True
-    torch.backends.cudnn.benchmark = False
+    # # Set seeds for deterministic dummy input generation AFTER model initialization
+    # # (get_mcore_gpt_model calls initialize_for_megatron which sets seed=1234)
+    # torch.manual_seed(1234)
+    # torch.cuda.manual_seed_all(1234)
+    # # Enable deterministic behavior for cuDNN
+    # torch.backends.cudnn.deterministic = True
+    # torch.backends.cudnn.benchmark = False
 
     sd = model.state_dict()
 
