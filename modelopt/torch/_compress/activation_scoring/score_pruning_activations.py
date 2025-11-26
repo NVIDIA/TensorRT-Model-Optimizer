@@ -18,13 +18,13 @@ from pathlib import Path
 import hydra
 import torch
 from omegaconf import DictConfig
-from modelopt.torch._compress.utils.parsing import format_global_config
 
 from modelopt.torch._compress.tools.hydra_utils import register_hydra_resolvers
 from modelopt.torch._compress.tools.logger import mprint
 from modelopt.torch._compress.tools.runtime import BaseRuntime, NativeDdpRuntime
 from modelopt.torch._compress.tools.validate_model import validate_model
 from modelopt.torch._compress.utils.dist_utils import is_distributed
+from modelopt.torch._compress.utils.parsing import format_global_config
 
 
 def has_checkpoint_support(activation_hooks_kwargs: dict) -> bool:
