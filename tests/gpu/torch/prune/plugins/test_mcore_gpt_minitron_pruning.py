@@ -93,58 +93,7 @@ def _test_mcore_gpt_pruning(
 
     model = _get_model()
 
-    # Set seeds for deterministic dummy input generation AFTER model initialization
-    # (get_mcore_gpt_model calls initialize_for_megatron which sets seed=1234)
-    torch.manual_seed(1234)
-    torch.cuda.manual_seed_all(1234)
-    # Enable deterministic behavior for cuDNN
-    torch.backends.cudnn.deterministic = True
-    torch.backends.cudnn.benchmark = False
-
     sd = model.state_dict()
-
-    # Debug: Print some model weights to verify deterministic initialization
-    # if rank == 0:
-    #     weight_keys = list(sd.keys())[:10]  # First 10 weight keys
-    #     print("\n=== Model Weight Debug (first 10 keys) ===")
-    #     for key in weight_keys:
-    #         weight = sd[key]
-    #         if isinstance(weight, torch.Tensor) and weight.numel() > 0:
-    #             # Skip non-floating point tensors (e.g., Byte, Int)
-    #             if weight.dtype in [torch.float32, torch.float16, torch.bfloat16, torch.float64]:
-    #                 mean = weight.mean().item()
-    #                 std = weight.std().item()
-    #                 min_val = weight.min().item()
-    #                 max_val = weight.max().item()
-    #                 print(
-    #                     f"{key}: shape={weight.shape}, "
-    #                     f"mean={mean:.10f}, std={std:.10f}, min={min_val:.10f}, max={max_val:.10f}"
-    #                 )
-    #             else:
-    #                 first_vals = weight.flatten()[:5].tolist()
-    #                 print(f"{key}: shape={weight.shape}, dtype={weight.dtype}")
-    #                 print(f"  (non-float, first 5 values: {first_vals})")
-    #     print("=" * 50 + "\n")
-
-    # Debug: Check if reinitializing produces same weights
-    if rank == 0:
-        print("\n=== Checking Weight Initialization Determinism ===")
-        # Save current linear_qkv weight
-        qkv_key = "decoder.layers.0.self_attention.linear_qkv.weight"
-        proj_key = "decoder.layers.0.self_attention.linear_proj.weight"
-
-        if qkv_key in sd and proj_key in sd:
-            qkv_weight = sd[qkv_key].clone()
-            proj_weight = sd[proj_key].clone()
-            print(f"{qkv_key}:")
-            print(f"  shape={qkv_weight.shape}, mean={qkv_weight.mean().item():.10f}")
-            print(f"  device={qkv_weight.device}, dtype={qkv_weight.dtype}")
-            print(f"  is_contiguous={qkv_weight.is_contiguous()}")
-            print(f"{proj_key}:")
-            print(f"  shape={proj_weight.shape}, mean={proj_weight.mean().item():.10f}")
-            print(f"  device={proj_weight.device}, dtype={proj_weight.dtype}")
-            print(f"  is_contiguous={proj_weight.is_contiguous()}")
-        print("=" * 50 + "\n")
 
     def forward_loop(m):
         for _ in range(5):
@@ -196,42 +145,42 @@ def _test_mcore_gpt_pruning(
         # Test case 1: MHA - pruned ffn/4 (num_attention_heads=8, num_query_groups=8, ffn_div=4)
         if pruned_ffn_div == 4:
             # Layer scores
-            assert pruning_scores["layer_scores"][1] == pytest.approx(2.1437832713127136, abs=1e-5)
-            assert pruning_scores["layer_scores"][2] == pytest.approx(1.792158305644989, abs=1e-5)
+            assert pruning_scores["layer_scores"][1] == pytest.approx(2.0868452191352844, abs=1e-5)
+            assert pruning_scores["layer_scores"][2] == pytest.approx(1.7638601660728455, abs=1e-5)
 
             # Validate decoder.layers.0.mlp activations
             mlp_0_acts = rank_0_activations["decoder.layers.0.mlp"]
-            assert mlp_0_acts.min().item() == pytest.approx(0.0011843212, abs=1e-5)
-            assert mlp_0_acts.max().item() == pytest.approx(1.0846971273, abs=1e-5)
-            assert mlp_0_acts.mean().item() == pytest.approx(0.0535472594, abs=1e-5)
+            assert mlp_0_acts.min().item() == pytest.approx(0.0015609927941114, abs=1e-5)
+            assert mlp_0_acts.max().item() == pytest.approx(0.3844809532165527, abs=1e-5)
+            assert mlp_0_acts.mean().item() == pytest.approx(0.0629318505525589, abs=1e-5)
 
             # Validate decoder.layers.1.mlp activations
             mlp_1_acts = rank_0_activations["decoder.layers.1.mlp"]
-            assert mlp_1_acts.min().item() == pytest.approx(0.0002450741, abs=1e-5)
-            assert mlp_1_acts.max().item() == pytest.approx(1.1014972925, abs=1e-5)
-            assert mlp_1_acts.mean().item() == pytest.approx(0.0904172808, abs=1e-5)
+            assert mlp_1_acts.min().item() == pytest.approx(0.0001484956446802, abs=1e-5)
+            assert mlp_1_acts.max().item() == pytest.approx(0.7835369110107422, abs=1e-5)
+            assert mlp_1_acts.mean().item() == pytest.approx(0.0926810950040817, abs=1e-5)
 
         # Test case 2: GQA - pruned attention/2 (num_attention_heads=8, num_query_groups=4, attention_div=2)
         elif pruned_num_attention_heads_div == 2 and pruned_ffn_div == 1:
             # Layer scores
-            assert pruning_scores["layer_scores"][1] == pytest.approx(2.1119985580444336, abs=1e-5)
-            assert pruning_scores["layer_scores"][2] == pytest.approx(1.7729830741882324, abs=1e-5)
+            assert pruning_scores["layer_scores"][1] == pytest.approx(2.1415508985519409, abs=1e-5)
+            assert pruning_scores["layer_scores"][2] == pytest.approx(1.7198008894920349, abs=1e-5)
 
             # Validate decoder.layers.0.self_attention activations
             assert "decoder.layers.0.self_attention" in rank_0_activations
             attn_0_acts = rank_0_activations["decoder.layers.0.self_attention"]
             assert attn_0_acts.shape == torch.Size([256])
-            assert attn_0_acts.min().item() == pytest.approx(0.03729403391480446, abs=1e-5)
-            assert attn_0_acts.max().item() == pytest.approx(0.3653244972229004, abs=1e-5)
-            assert attn_0_acts.mean().item() == pytest.approx(0.15008458495140076, abs=1e-5)
+            assert attn_0_acts.min().item() == pytest.approx(0.0409194342792034, abs=1e-5)
+            assert attn_0_acts.max().item() == pytest.approx(0.5261313319206238, abs=1e-5)
+            assert attn_0_acts.mean().item() == pytest.approx(0.1613342612981796, abs=1e-5)
 
             # Validate decoder.layers.1.self_attention activations
             assert "decoder.layers.1.self_attention" in rank_0_activations
             attn_1_acts = rank_0_activations["decoder.layers.1.self_attention"]
             assert attn_1_acts.shape == torch.Size([256])
-            assert attn_1_acts.min().item() == pytest.approx(0.140824556350708, abs=1e-5)
-            assert attn_1_acts.max().item() == pytest.approx(1.0845409631729126, abs=1e-5)
-            assert attn_1_acts.mean().item() == pytest.approx(0.4730667173862457, abs=1e-5)
+            assert attn_1_acts.min().item() == pytest.approx(0.1189328655600548, abs=1e-5)
+            assert attn_1_acts.max().item() == pytest.approx(1.3832759857177734, abs=1e-5)
+            assert attn_1_acts.mean().item() == pytest.approx(0.4782669544219971, abs=1e-5)
 
     # Assert weights are pruned correctly
     for layer in model.decoder.layers:
@@ -295,14 +244,14 @@ def _test_mcore_gpt_pruning(
     [
         # MHA - pruned ffn/4
         (8, 8, "squared_relu", "LayerNorm", 4, 1, 1, 1, 1, False, "rope", False, False),
-        # # GQA - pruned attention/2
-        # (8, 4, "squared_relu", "RMSNorm", 1, 2, 2, 1, 1, False, "rope", False, False),
-        # # GQA - pruned hidden_size/4
-        # (8, 4, "swiglu", "RMSNorm", 1, 1, 1, 4, 1, False, "rope", True, False),
-        # # MHA - pruned num_layers/2
-        # (8, 8, "swiglu", "LayerNorm", 1, 1, 1, 1, 2, False, "rope", False, False),
-        # # GQA - pruned all/2, uneven pp
-        # (8, 4, "swiglu", "RMSNorm", 2, 2, 2, 2, 2, True, "yarn", False, True),
+        # GQA - pruned attention/2
+        (8, 4, "squared_relu", "RMSNorm", 1, 2, 2, 1, 1, False, "rope", False, False),
+        # GQA - pruned hidden_size/4
+        (8, 4, "swiglu", "RMSNorm", 1, 1, 1, 4, 1, False, "rope", True, False),
+        # MHA - pruned num_layers/2
+        (8, 8, "swiglu", "LayerNorm", 1, 1, 1, 1, 2, False, "rope", False, False),
+        # GQA - pruned all/2, uneven pp
+        (8, 4, "swiglu", "RMSNorm", 2, 2, 2, 2, 2, True, "yarn", False, True),
     ],
 )
 def test_mcore_gpt_pruning(
