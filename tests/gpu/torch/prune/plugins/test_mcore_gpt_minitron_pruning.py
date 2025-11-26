@@ -103,26 +103,46 @@ def _test_mcore_gpt_pruning(
     sd = model.state_dict()
 
     # Debug: Print some model weights to verify deterministic initialization
+    # if rank == 0:
+    #     weight_keys = list(sd.keys())[:10]  # First 10 weight keys
+    #     print("\n=== Model Weight Debug (first 10 keys) ===")
+    #     for key in weight_keys:
+    #         weight = sd[key]
+    #         if isinstance(weight, torch.Tensor) and weight.numel() > 0:
+    #             # Skip non-floating point tensors (e.g., Byte, Int)
+    #             if weight.dtype in [torch.float32, torch.float16, torch.bfloat16, torch.float64]:
+    #                 mean = weight.mean().item()
+    #                 std = weight.std().item()
+    #                 min_val = weight.min().item()
+    #                 max_val = weight.max().item()
+    #                 print(
+    #                     f"{key}: shape={weight.shape}, "
+    #                     f"mean={mean:.10f}, std={std:.10f}, min={min_val:.10f}, max={max_val:.10f}"
+    #                 )
+    #             else:
+    #                 first_vals = weight.flatten()[:5].tolist()
+    #                 print(f"{key}: shape={weight.shape}, dtype={weight.dtype}")
+    #                 print(f"  (non-float, first 5 values: {first_vals})")
+    #     print("=" * 50 + "\n")
+
+    # Debug: Check if reinitializing produces same weights
     if rank == 0:
-        weight_keys = list(sd.keys())[:10]  # First 10 weight keys
-        print("\n=== Model Weight Debug (first 10 keys) ===")
-        for key in weight_keys:
-            weight = sd[key]
-            if isinstance(weight, torch.Tensor) and weight.numel() > 0:
-                # Skip non-floating point tensors (e.g., Byte, Int)
-                if weight.dtype in [torch.float32, torch.float16, torch.bfloat16, torch.float64]:
-                    mean = weight.mean().item()
-                    std = weight.std().item()
-                    min_val = weight.min().item()
-                    max_val = weight.max().item()
-                    print(
-                        f"{key}: shape={weight.shape}, "
-                        f"mean={mean:.10f}, std={std:.10f}, min={min_val:.10f}, max={max_val:.10f}"
-                    )
-                else:
-                    first_vals = weight.flatten()[:5].tolist()
-                    print(f"{key}: shape={weight.shape}, dtype={weight.dtype}")
-                    print(f"  (non-float, first 5 values: {first_vals})")
+        print("\n=== Checking Weight Initialization Determinism ===")
+        # Save current linear_qkv weight
+        qkv_key = "decoder.layers.0.self_attention.linear_qkv.weight"
+        proj_key = "decoder.layers.0.self_attention.linear_proj.weight"
+
+        if qkv_key in sd and proj_key in sd:
+            qkv_weight = sd[qkv_key].clone()
+            proj_weight = sd[proj_key].clone()
+            print(f"{qkv_key}:")
+            print(f"  shape={qkv_weight.shape}, mean={qkv_weight.mean().item():.10f}")
+            print(f"  device={qkv_weight.device}, dtype={qkv_weight.dtype}")
+            print(f"  is_contiguous={qkv_weight.is_contiguous()}")
+            print(f"{proj_key}:")
+            print(f"  shape={proj_weight.shape}, mean={proj_weight.mean().item():.10f}")
+            print(f"  device={proj_weight.device}, dtype={proj_weight.dtype}")
+            print(f"  is_contiguous={proj_weight.is_contiguous()}")
         print("=" * 50 + "\n")
 
     def forward_loop(m):
