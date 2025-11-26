@@ -328,7 +328,7 @@ class IterativeChannelContributionHook(ForwardHook):
         }
 
     def accumulate(self) -> torch.Tensor:
-        """Return importance scores as a tensor (compatible with L2NormHook interface).
+        """Return importance scores as a tensor.
 
         Returns:
             Tensor of importance scores, one per channel. Lower scores indicate less important channels.

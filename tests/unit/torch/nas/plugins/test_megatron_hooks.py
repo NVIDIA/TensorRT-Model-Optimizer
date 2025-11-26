@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Unit tests for hooks."""
+"""Unit tests for megatron hooks."""
 
 import torch
 import torch.nn as nn
@@ -24,7 +24,10 @@ skip_if_no_megatron()
 from _test_utils.torch.distributed.utils import spawn_multiprocess_job
 from megatron.core.parallel_state import initialize_model_parallel
 
-from modelopt.torch.nas.plugins.hooks import IterativeChannelContributionHook, L2NormHook
+from modelopt.torch.nas.plugins.megatron_hooks import (
+    IterativeChannelContributionHook,
+    MegatronL2NormHook,
+)
 
 
 def test_iterative_channel_contribution_hook():
@@ -71,7 +74,7 @@ def _test_l2_norm_hook(rank, size):
     torch.manual_seed(42)
 
     linear_layer = nn.Linear(in_features=6, out_features=4, bias=False)
-    hook = L2NormHook(max_size=None)
+    hook = MegatronL2NormHook(max_size=None)
     linear_layer.register_forward_hook(hook)
 
     num_iterations = 3
