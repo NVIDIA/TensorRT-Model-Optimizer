@@ -404,9 +404,7 @@ def quantize_weights(model: nn.Module, onnx_model: onnx.ModelProto) -> onnx.Mode
         onnx_exporters.append(MXFP8QuantExporter)
 
     for onnx_exporter in onnx_exporters:
-        onnx_model = onnx_exporter.compute_scales(onnx_model)
-        onnx_model = onnx_exporter.compress_weights(onnx_model)
-        onnx_model = onnx_exporter.post_process(onnx_model)
+        onnx_model = onnx_exporter.process_model(onnx_model)
 
     return onnx_model
 

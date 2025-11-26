@@ -29,6 +29,20 @@ from modelopt.onnx.quantization.quant_utils import pack_weights_to_int4
 class ONNXQuantExporter(ABC):
     """Base class for ONNX quantizer exporters."""
 
+    @classmethod
+    def process_model(cls, onnx_model: onnx.ModelProto) -> onnx.ModelProto:
+        """Processes the ONNX model."""
+        onnx_model = cls.pre_process(onnx_model)
+        onnx_model = cls.compute_scales(onnx_model)
+        onnx_model = cls.compress_weights(onnx_model)
+        onnx_model = cls.post_process(onnx_model)
+        return onnx_model
+
+    @staticmethod
+    @abstractmethod
+    def pre_process(onnx_model: onnx.ModelProto) -> onnx.ModelProto:
+        """Pre-processes the ONNX model. Converts all DQ -> * -> op patterns to DQ -> op."""
+
     @staticmethod
     @abstractmethod
     def compute_scales(onnx_model: onnx.ModelProto) -> onnx.ModelProto:
@@ -50,6 +64,10 @@ class MXFP8QuantExporter(ONNXQuantExporter):
     """Exporter for MXFP8 quantization."""
 
     @staticmethod
+    def pre_process(onnx_model: onnx.ModelProto) -> onnx.ModelProto:
+        """Pre-processes the ONNX model for MXFP8 quantization."""
+
+    @staticmethod
     def compute_scales(onnx_model: onnx.ModelProto) -> onnx.ModelProto:
         """Computes the scales for the weights in the ONNX model for MXFP8 quantization."""
 
@@ -65,6 +83,10 @@ class MXFP8QuantExporter(ONNXQuantExporter):
 # TODO: Implement the FP8QuantExporter
 class FP8QuantExporter(ONNXQuantExporter):
     """Exporter for FP8 quantization."""
+
+    @staticmethod
+    def pre_process(onnx_model: onnx.ModelProto) -> onnx.ModelProto:
+        """Pre-processes the ONNX model for FP8 quantization."""
 
     @staticmethod
     def compute_scales(onnx_model: onnx.ModelProto) -> onnx.ModelProto:
@@ -84,6 +106,10 @@ class INT8QuantExporter(ONNXQuantExporter):
     """Exporter for INT8 quantization."""
 
     @staticmethod
+    def pre_process(onnx_model: onnx.ModelProto) -> onnx.ModelProto:
+        """Pre-processes the ONNX model for INT8 quantization."""
+
+    @staticmethod
     def compute_scales(onnx_model: onnx.ModelProto) -> onnx.ModelProto:
         """Computes the scales for the weights in the ONNX model for INT8 quantization."""
 
@@ -100,10 +126,9 @@ class INT4QuantExporter(ONNXQuantExporter):
     """Exporter for INT4 quantization."""
 
     @staticmethod
-    def compute_scales(onnx_model: onnx.ModelProto) -> onnx.ModelProto:
-        """Computes the scales for the weights in the ONNX model for INT4 quantization."""
+    def pre_process(onnx_model: onnx.ModelProto) -> onnx.ModelProto:
+        """Pre-processes the ONNX model for INT4 quantization."""
         graph = onnx_model.graph
-        initializer_map = {initializer.name: initializer for initializer in graph.initializer}
         value_info_map = {value_info.name: value_info for value_info in graph.value_info}
         weight_dq_nodes = [node for node in graph.node if node.op_type == "DequantizeLinear"]
         tensor_producer_map = get_tensor_producer_nodes(graph)
@@ -111,20 +136,7 @@ class INT4QuantExporter(ONNXQuantExporter):
         nodes_to_remove = []
         for node in weight_dq_nodes:
             weight_name = node.input[0]
-            scale_name = node.input[1]
-            logger.debug(f"Processing INT4 conversion for weight {weight_name}")
-            weight = numpy_helper.to_array(initializer_map[weight_name])
-            if scale_name in initializer_map:
-                scale = numpy_helper.to_array(initializer_map[scale_name])
-            else:
-                scale_constant_node = tensor_producer_map[scale_name]
-                for attr in scale_constant_node.attribute:
-                    if attr.name == "value":
-                        tensor = attr.t
-                        scale = numpy_helper.to_array(tensor)
-
-            weight = weight / scale
-            block_size = weight.shape[-1]
+            logger.debug(f"Restructuring graph for weight {weight_name}")
 
             ## Convert DequantizeLinear -> Reshape -> Transpose -> MatMul/Gemm to DequantizeLinear -> Matmul/Gemm
             dq_child_nodes = [n for n in graph.node if node.output[0] in n.input]
@@ -137,7 +149,7 @@ class INT4QuantExporter(ONNXQuantExporter):
             shape_constant_name = next(input for input in reshape_node.input if "Constant" in input)
             nodes_to_remove.append(tensor_producer_map[shape_constant_name].name)
 
-            # Get the shape of the output of the reshape node
+            # Get the shape of the output of the reshape node - store for compute_scales
             reshape_output_value_info = value_info_map.get(reshape_node_output)
             if reshape_output_value_info is not None:
                 weight_shape = [
@@ -146,13 +158,11 @@ class INT4QuantExporter(ONNXQuantExporter):
             else:
                 raise ValueError(f"Unable to determine shape of weight tensor {weight_name}")
 
-            # Reshape weights and scales
-            weight = weight.reshape(weight_shape)
-            assert weight_shape[-1] % block_size == 0, (
-                f"Block size {block_size} is not divisible by {weight_shape[-1]}"
-            )
-            scale_shape = [*weight_shape[:-1], weight_shape[-1] // block_size]
-            scale = scale.reshape(scale_shape)
+            # Store target shape as attribute on DequantizeLinear node
+            target_shape_attr = node.attribute.add()
+            target_shape_attr.name = "_target_shape"
+            target_shape_attr.ints.extend(weight_shape)
+
             reshape_child_nodes = [n for n in graph.node if reshape_node.output[0] in n.input]
             assert len(reshape_child_nodes) == 1, f"Expected exactly one child node for {node.name}"
 
@@ -165,7 +175,7 @@ class INT4QuantExporter(ONNXQuantExporter):
                 cast_child_nodes = [n for n in graph.node if cast_node.output[0] in n.input]
                 next_node = cast_child_nodes[0]
 
-            # Transpose weights and scales if present
+            # Store transpose permutation if present
             if next_node.op_type == "Transpose":
                 transpose_node = next_node
                 nodes_to_remove.append(transpose_node.name)
@@ -177,26 +187,90 @@ class INT4QuantExporter(ONNXQuantExporter):
                     if attr.name == "perm":
                         perm = [x for x in attr.ints]  # noqa: C416
                 assert perm is not None, f"Permutation not found for {node.name}"
-                weight = weight.transpose(perm)
-                scale = scale.transpose(perm)
+
+                # Store permutation as attribute on DequantizeLinear node
+                perm_attr = node.attribute.add()
+                perm_attr.name = "_transpose_perm"
+                perm_attr.ints.extend(perm)
+
                 transpose_child_nodes = [
                     n for n in graph.node if transpose_node.output[0] in n.input
                 ]
-                # transpose_node.input = []
                 assert len(transpose_child_nodes) == 1, (
                     f"Expected exactly one matmul node for {node.name}"
                 )
                 matmul_node = transpose_child_nodes[0]
             else:
                 matmul_node = next_node
+
             assert matmul_node.op_type in ["MatMul", "Gemm"], (
                 f"Expected MatMul or Gemm node for {node.name}"
             )
+            # Rewire MatMul to use DequantizeLinear output directly
             matmul_node.input[1] = node.output[0]
 
+        # Remove transpose, reshape, and constant nodes
+        new_nodes = [node for node in graph.node if node.name not in nodes_to_remove]
+        del graph.node[:]
+        graph.node.extend(new_nodes)
+
+        return onnx_model
+
+    @staticmethod
+    def compute_scales(onnx_model: onnx.ModelProto) -> onnx.ModelProto:
+        """Computes the scales for the weights in the ONNX model for INT4 quantization."""
+        graph = onnx_model.graph
+        initializer_map = {initializer.name: initializer for initializer in graph.initializer}
+        weight_dq_nodes = [node for node in graph.node if node.op_type == "DequantizeLinear"]
+        tensor_producer_map = get_tensor_producer_nodes(graph)
+
+        for node in weight_dq_nodes:
+            weight_name = node.input[0]
+            scale_name = node.input[1]
+            logger.debug(f"Computing scales for weight {weight_name}")
+
+            # Load weight and scale tensors
+            weight = numpy_helper.to_array(initializer_map[weight_name])
+            if scale_name in initializer_map:
+                scale = numpy_helper.to_array(initializer_map[scale_name])
+            else:
+                scale_constant_node = tensor_producer_map[scale_name]
+                for attr in scale_constant_node.attribute:
+                    if attr.name == "value":
+                        tensor = attr.t
+                        scale = numpy_helper.to_array(tensor)
+
+            # Dequantize weight
+            weight = weight / scale
+            block_size = weight.shape[-1]
+
+            # Get target shape from metadata stored in pre_process
+            target_shape = None
+            transpose_perm = None
+            for attr in node.attribute:
+                if attr.name == "_target_shape":
+                    target_shape = list(attr.ints)
+                elif attr.name == "_transpose_perm":
+                    transpose_perm = list(attr.ints)
+
+            assert target_shape is not None, f"Target shape not found for {node.name}"
+
+            # Reshape weights and scales
+            weight = weight.reshape(target_shape)
+            assert target_shape[-1] % block_size == 0, (
+                f"Block size {block_size} is not divisible by {target_shape[-1]}"
+            )
+            scale_shape = [*target_shape[:-1], target_shape[-1] // block_size]
+            scale = scale.reshape(scale_shape)
+
+            # Transpose weights and scales if permutation was stored
+            if transpose_perm is not None:
+                weight = weight.transpose(transpose_perm)
+                scale = scale.transpose(transpose_perm)
+
+            # Handle scale tensor creation/update
             if scale_name not in initializer_map:
                 # Remove scale producer if it's a Constant node
-                scale_name = node.input[1]
                 scale_producer = tensor_producer_map[scale_name]
                 if scale_producer.op_type == "Constant":
                     graph.node.remove(scale_producer)
@@ -210,14 +284,17 @@ class INT4QuantExporter(ONNXQuantExporter):
                 scale_tensor = onnx.numpy_helper.from_array(scale, scale_name)
                 initializer_map[scale_name].CopyFrom(scale_tensor)
 
-            weight = numpy_helper.from_array(weight, weight_name)
-            initializer_map[weight_name].CopyFrom(weight)
+            # Update weight tensor
+            weight_tensor = numpy_helper.from_array(weight, weight_name)
+            initializer_map[weight_name].CopyFrom(weight_tensor)
+
             logger.debug(f"Computed scales for weight {weight_name} for INT4 quantization")
 
-        # Remove transpose and reshape nodes
-        new_nodes = [node for node in graph.node if node.name not in nodes_to_remove]
-        del graph.node[:]
-        graph.node.extend(new_nodes)
+        # Clean up metadata attributes from DequantizeLinear nodes
+        for node in weight_dq_nodes:
+            attrs_to_keep = [attr for attr in node.attribute if not attr.name.startswith("_")]
+            del node.attribute[:]
+            node.attribute.extend(attrs_to_keep)
 
         return onnx_model
 
@@ -305,6 +382,10 @@ class INT4QuantExporter(ONNXQuantExporter):
 # TODO: Implement the NVFP4QuantExporter
 class NVFP4QuantExporter(ONNXQuantExporter):
     """Exporter for NVFP4 quantization."""
+
+    @staticmethod
+    def pre_process(onnx_model: onnx.ModelProto) -> onnx.ModelProto:
+        """Pre-processes the ONNX model for NVFP4 quantization."""
 
     @staticmethod
     def compute_scales(onnx_model: onnx.ModelProto) -> onnx.ModelProto:

@@ -337,9 +337,7 @@ class TestQuantizeWeightsToInt4:
         model = create_test_model_with_int4_dq_reshape_transpose_matmul()
 
         # Run quantization
-        quantized_model = INT4QuantExporter.compute_scales(model)
-        quantized_model = INT4QuantExporter.compress_weights(quantized_model)
-        quantized_model = INT4QuantExporter.post_process(quantized_model)
+        quantized_model = INT4QuantExporter.process_model(model)
 
         # Verify weight is converted to INT4
         weight_tensor = next(
@@ -364,9 +362,7 @@ class TestQuantizeWeightsToInt4:
         model = create_test_model_with_int4_dq_reshape_transpose_matmul(constant_scale=True)
 
         # Run quantization
-        quantized_model = INT4QuantExporter.compute_scales(model)
-        quantized_model = INT4QuantExporter.compress_weights(quantized_model)
-        quantized_model = INT4QuantExporter.post_process(quantized_model)
+        quantized_model = INT4QuantExporter.process_model(model)
 
         # Verify Constant node is removed
         constant_nodes = [node for node in quantized_model.graph.node if node.op_type == "Constant"]
@@ -389,9 +385,7 @@ class TestQuantizeWeightsToInt4:
         model = create_test_model_with_proj_nodes()
 
         # Run quantization
-        quantized_model = INT4QuantExporter.compute_scales(model)
-        quantized_model = INT4QuantExporter.compress_weights(quantized_model)
-        quantized_model = INT4QuantExporter.post_process(quantized_model)
+        quantized_model = INT4QuantExporter.process_model(model)
 
         # Verify bias tensor is cast to float16
         bias_tensor = next(
