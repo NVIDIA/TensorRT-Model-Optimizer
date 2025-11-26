@@ -39,9 +39,9 @@ from collections.abc import Sequence
 from typing import Any
 
 import onnx
-import onnxslim
 import onnx.onnx_cpp2py_export.checker as C
 import onnx_graphsurgeon as gs
+import onnxslim
 
 from modelopt.onnx.logging_config import configure_logging, logger
 from modelopt.onnx.op_types import is_data_dependent_shape_op
