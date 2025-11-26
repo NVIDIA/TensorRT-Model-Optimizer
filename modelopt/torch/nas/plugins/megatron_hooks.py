@@ -20,6 +20,7 @@ from abc import ABC, abstractmethod
 import torch
 import torch.nn.functional as F
 from megatron.core.tensor_parallel import gather_from_tensor_model_parallel_region
+from megatron.core.tensor_parallel.layers import RowParallelLinear
 from torch import nn
 
 
@@ -151,11 +152,11 @@ class MegatronL2NormHook(ForwardHook):
         return self._activations.pow(0.5)
 
     def state_dict(self) -> dict:
-        """Return the state dictionary containing accumulated activations."""
+        """Return the state dictionary containing activations."""
         return {"activations": self._activations}
 
     def load_state_dict(self, state_dict: dict) -> None:
-        """Load accumulated activations from checkpoint."""
+        """Load activations from checkpoint."""
         self._activations = state_dict["activations"]
 
 
@@ -196,7 +197,8 @@ class IterativeChannelContributionHook(ForwardHook):
     by measuring channel contribution as the L2 norm of output change when removed.
 
     Args:
-        linear_layer: The linear projection layer to analyze.
+        linear_layer: The linear projection layer to analyze. Can be either nn.Linear or
+            RowParallelLinear from megatron.core.tensor_parallel.layers.
         activation_hooks_kwargs: Configuration dict with:
             - validation_full_iters (int): Number of pruning iterations.
             - clear_gpu_memory (bool, optional): Clear GPU memory during computation.
@@ -206,7 +208,10 @@ class IterativeChannelContributionHook(ForwardHook):
     """
 
     def __init__(
-        self, linear_layer: nn.Linear, activation_hooks_kwargs: dict, max_size: int | None = None
+        self,
+        linear_layer: nn.Linear | RowParallelLinear,
+        activation_hooks_kwargs: dict,
+        max_size: int | None = None,
     ):
         """Initialize the iterative channel contribution hook."""
         self.weight_matrix = linear_layer.weight
