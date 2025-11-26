@@ -28,16 +28,8 @@ from functools import partial
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
-try:
-    from typeguard import check_type
-except ImportError:
-    print("Could not import typeguard. Type checking is skipped.")
-
-    def check_type(x, cls):
-        return x
-
-
 import torch
+from typeguard import check_type
 
 from modelopt.torch._compress.decilm.deci_lm_hf_code.block_config import (
     SUBBLOCK_CLS_DICT,
