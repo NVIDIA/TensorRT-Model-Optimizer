@@ -17,11 +17,11 @@ import numpy as np
 import pytest
 from onnx import TensorProto, helper, numpy_helper
 
+from modelopt.onnx.export.int4_exporter import INT4QuantExporter
 from modelopt.onnx.quantization.qdq_utils import (
     _cast_fp4,
     _cast_fp8,
     fp4qdq_to_2dq,
-    quantize_weights_to_int4,
     quantize_weights_to_mxfp8,
 )
 
@@ -337,7 +337,7 @@ class TestQuantizeWeightsToInt4:
         model = create_test_model_with_int4_dq_reshape_transpose_matmul()
 
         # Run quantization
-        quantized_model = quantize_weights_to_int4(model)
+        quantized_model = INT4QuantExporter.process_model(model)
 
         # Verify weight is converted to INT4
         weight_tensor = next(
@@ -362,7 +362,7 @@ class TestQuantizeWeightsToInt4:
         model = create_test_model_with_int4_dq_reshape_transpose_matmul(constant_scale=True)
 
         # Run quantization
-        quantized_model = quantize_weights_to_int4(model)
+        quantized_model = INT4QuantExporter.process_model(model)
 
         # Verify Constant node is removed
         constant_nodes = [node for node in quantized_model.graph.node if node.op_type == "Constant"]
@@ -385,7 +385,7 @@ class TestQuantizeWeightsToInt4:
         model = create_test_model_with_proj_nodes()
 
         # Run quantization
-        quantized_model = quantize_weights_to_int4(model)
+        quantized_model = INT4QuantExporter.process_model(model)
 
         # Verify bias tensor is cast to float16
         bias_tensor = next(

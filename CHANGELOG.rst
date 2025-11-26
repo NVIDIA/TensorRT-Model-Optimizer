@@ -14,8 +14,12 @@ Model Optimizer Changelog (Linux)
 - Add MoE (e.g. Qwen3-30B-A3B, gpt-oss-20b) pruning support for ``num_moe_experts``, ``moe_ffn_hidden_size`` and ``moe_shared_expert_intermediate_size`` parameters in Minitron pruning (``mcore_minitron``).
 - Add ``specdec_bench`` example to benchmark speculative decoding performance. See `examples/specdec_bench/README.md <https://github.com/NVIDIA/TensorRT-Model-Optimizer/tree/main/examples/specdec_bench#speculative-decoding-benchmark>`_ for more details.
 - Add FP8/NVFP4 KV cache quantization support for Megatron Core models.
+- Add KL Divergence loss based auto_quantize method. See `auto_quantize API docs <https://nvidia.github.io/TensorRT-Model-Optimizer/reference/generated/modelopt.torch.quantization.model_quant.html#modelopt.torch.quantization.model_quant.auto_quantize>`_ for more details.
+- Add support for saving and resuming auto_quantize search state. This speeds up the auto_quantize process by skipping the score estimation step if the search state is provided.
 - Add flag ``trt_plugins_precision`` in ONNX autocast to indicate custom ops precision. This is similar to the flag already existing in the quantization workflow.
 - Add support for PyTorch Geometric quantization.
+- Add per tensor and per channel MSE calibrator support.
+- Added support for PTQ/QAT checkpoint export and loading for running fakequant evaluation in vLLM. See ``examples/vllm_serve/README.md#load-qatptq-model-and-serve-in-vllm-wip`` for more details.
 
 **Documentation**
 
@@ -24,6 +28,7 @@ Model Optimizer Changelog (Linux)
 **Misc**
 
 - Bump minimum recommended transformers version to 4.53.
+- Replace ONNX simplification package from ``onnxsim`` to ``onnxslim``.
 
 0.39 (2025-11-11)
 ^^^^^^^^^^^^^^^^^

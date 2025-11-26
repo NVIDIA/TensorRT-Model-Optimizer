@@ -95,7 +95,15 @@ mto.enable_huggingface_checkpointing()
 
 
 def auto_quantize(
-    model, qformat, auto_quantize_bits, calib_dataloader, calibrate_loop, batch_size=1
+    model,
+    qformat,
+    calib_dataloader,
+    calibrate_loop,
+    auto_quantize_bits,
+    batch_size=1,
+    auto_quantize_method="gradient",
+    auto_quantize_score_size=128,
+    auto_quantize_checkpoint=None,
 ):
     qformat_list = qformat.split(",")
     assert qformat_list, "No quantization formats provided"
@@ -122,18 +130,34 @@ def auto_quantize(
         # which contains the loss attribute.
         return output.loss
 
+    if auto_quantize_method == "gradient":
+        # For gradient-based method, return full output with loss
+        def forward_step(model, batch):
+            return model(**batch)
+    elif auto_quantize_method == "kl_div":
+        # For KL divergence method, return only logits
+        def forward_step(model, batch):
+            return model(**batch).logits
+    else:
+        raise ValueError(
+            f"Invalid auto_quantize_method: {auto_quantize_method}. Must be 'gradient' or 'kl_div'"
+        )
+
     model, _ = mtq.auto_quantize(
         model,
         constraints={"effective_bits": auto_quantize_bits},
         data_loader=calib_dataloader,
-        forward_step=lambda model, batch: model(**batch),
-        loss_func=loss_func,
+        forward_step=forward_step,
+        loss_func=loss_func,  # Only used for gradient-based method
         # TRTLLM only support one quantization format or None (do not quantize, internally supported)
         quantization_formats=[QUANT_CFG_CHOICES[format] for format in qformat_list],
         num_calib_steps=len(calib_dataloader),
-        num_score_steps=len(calib_dataloader),
+        # AutoQuantize scoring is the costly phase; allow smaller sample counts than calibration.
+        num_score_steps=min(len(calib_dataloader), max(auto_quantize_score_size // batch_size, 1)),
         verbose=True,
         disabled_layers=["*lm_head*"],
+        method=auto_quantize_method,
+        checkpoint=auto_quantize_checkpoint,
     )
 
     # We need to explicitly calibrate for kv cache quantization
@@ -191,10 +215,13 @@ def quantize_model(model, quant_cfg, args, calib_dataloader=None, calibration_on
         model = auto_quantize(
             model,
             args.qformat,
-            args.auto_quantize_bits,
             calib_dataloader,
             calibrate_loop,
+            args.auto_quantize_bits,
             args.batch_size,
+            args.auto_quantize_method,
+            args.auto_quantize_score_size,
+            args.auto_quantize_checkpoint,
         )
     elif calibration_only:
         model = mtq.calibrate(model, quant_cfg["algorithm"], forward_loop=calibrate_loop)
@@ -444,13 +471,17 @@ def main(args):
             assert tokenizer is not None and isinstance(
                 tokenizer, (PreTrainedTokenizer, PreTrainedTokenizerFast)
             ), "The PreTrainedTokenizer must be set"
+            # Labels are only needed for gradient-based auto_quantize
+            include_labels = (
+                args.auto_quantize_bits is not None and args.auto_quantize_method == "gradient"
+            )
             calib_dataloader = get_dataset_dataloader(
                 dataset_name=args.dataset,
                 tokenizer=tokenizer,
                 batch_size=args.batch_size,
                 num_samples=args.calib_size,
                 device=device,
-                include_labels=args.auto_quantize_bits is not None,
+                include_labels=include_labels,
             )
 
         quant_cfg = build_quant_cfg(
@@ -802,6 +833,36 @@ if __name__ == "__main__":
         ),
         default=None,
         type=str,
+    )
+    parser.add_argument(
+        "--auto_quantize_method",
+        type=str,
+        default="gradient",
+        choices=["gradient", "kl_div"],
+        help=(
+            "Method for auto_quantize sensitivity analysis. 'gradient' uses gradient-based method "
+            "(requires labels in dataset). 'kl_div' uses KL divergence between original and "
+            "quantized model outputs (no labels required). Default: 'gradient'"
+        ),
+    )
+    parser.add_argument(
+        "--auto_quantize_score_size",
+        type=int,
+        default=128,
+        help=(
+            "Number of samples to use for auto_quantize scoring. Most of auto_quantize time is spent on "
+            "sensitivity score estimation, so reducing this speeds it up while only minimally affecting "
+            "final model accuracy compared to lowering --calib_size (the number of samples used for calibration)."
+        ),
+    )
+    parser.add_argument(
+        "--auto_quantize_checkpoint",
+        type=str,
+        default=None,
+        help=(
+            "Path to checkpoint file for saving/restoring auto_quantize search state "
+            "(sensitivity scores, costs, etc.). Only used when auto_quantize_bits is specified."
+        ),
     )
 
     args = parser.parse_args()

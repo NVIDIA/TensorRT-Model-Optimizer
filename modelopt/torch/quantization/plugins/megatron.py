@@ -230,6 +230,30 @@ def megatron_replace_quant_module_hook(model: torch.nn.Module):
 CUSTOM_MODEL_PLUGINS.add(megatron_replace_quant_module_hook)
 
 
+def ensure_metadata_has_dp_cp_group(metadata):
+    """Ensure `metadata` is a dict containing `dp_cp_group` entry.
+
+    If `metadata` is None, a new dict is returned with `dp_cp_group` set.
+    If `metadata` is a dict and missing `dp_cp_group`, it is updated in-place.
+
+    This function is adapted from megatron-lm's megatron.core.transformer.utils to avoid
+    dependency on megatron-lm's specific version.
+
+    Note:
+        This is a temporary method and will be removed once this function is merged to
+        megatron.core.transformer.utils in the main branch of megatron-lm.
+    """
+    if metadata is None:
+        metadata = {}
+    if "dp_cp_group" not in metadata:
+        try:
+            metadata["dp_cp_group"] = get_data_parallel_group(with_context_parallel=True)
+        except (AssertionError, RuntimeError):
+            # Fallback if context parallel is not initialized
+            metadata["dp_cp_group"] = get_data_parallel_group()
+    return metadata
+
+
 class _MegatronParallelLinear(_ParallelLinear):
     _functionals_to_replace = [
         (megatron_parallel, "linear_with_grad_accumulation_and_async_allreduce"),
@@ -285,6 +309,9 @@ class _MegatronParallelLinear(_ParallelLinear):
         return False
 
     def sharded_state_dict(self, prefix="", sharded_offsets=(), metadata=None):
+        # Ensure metadata has dp_cp_group to avoid None subscript errors
+        metadata = ensure_metadata_has_dp_cp_group(metadata)
+
         # [WAR]: although we disable output_layer quantization by default but it will
         # still be picked up by mtq.quantize since it is a ColumnParallelLinear. We need
         # to further ensure that its sharded state_dict has no scalars or amax since
@@ -294,7 +321,7 @@ class _MegatronParallelLinear(_ParallelLinear):
         #    state_dict mismatch.
         if prefix.endswith("output_layer."):
             # assert not any("_quantizer" in k for k in self.state_dict()), "quantized output_layer"
-            return super().sharded_state_dict(prefix, sharded_offsets)
+            return super().sharded_state_dict(prefix, sharded_offsets, metadata)
 
         quantizer_state_dict = {}
         for k, v in self.state_dict(prefix="", keep_vars=True).items():
@@ -310,7 +337,7 @@ class _MegatronParallelLinear(_ParallelLinear):
                     "Please use regular state_dict."
                 )
         sharded_axis_dict = self._get_shard_axis_dict(quantizer_state_dict)
-        sharded_state_dict = super().sharded_state_dict(prefix, sharded_offsets)
+        sharded_state_dict = super().sharded_state_dict(prefix, sharded_offsets, metadata)
         sharded_state_dict.update(
             **make_sharded_tensors_for_checkpoint(
                 quantizer_state_dict, prefix, sharded_axis_dict, sharded_offsets

@@ -20,6 +20,7 @@
 
 import json
 import os
+import shutil
 import tempfile
 from collections import OrderedDict
 from pathlib import Path
@@ -29,7 +30,7 @@ from warnings import warn
 import torch
 import torch.distributed
 import torch.nn as nn
-from huggingface_hub import snapshot_download
+from huggingface_hub import hf_hub_download, snapshot_download
 from safetensors.torch import safe_open, save_file
 from tqdm import tqdm
 
@@ -41,11 +42,16 @@ from .model_config import (
     QUANTIZATION_FP8,
     QUANTIZATION_FP8_PB_REAL,
     QUANTIZATION_FP8_PB_WO,
+    QUANTIZATION_NONE,
     QUANTIZATION_NVFP4,
 )
 from .plugins.mcore_common import all_mcore_hf_export_mapping
 from .plugins.mcore_custom import CustomModuleMapping, save_safetensors
 from .plugins.megatron_importer import GPTModelImporter
+from .plugins.vllm_fakequant import (
+    gather_mcore_vllm_fq_quantized_state_dict,
+    get_mcore_vllm_fq_quantized_state,
+)
 from .quant_utils import (
     get_activation_scaling_factor,
     get_kv_cache_dtype,
@@ -77,7 +83,10 @@ with import_plugin("megatron"):
 
     has_mcore = True
 
-__all__ = ["export_mcore_gpt_to_hf", "import_mcore_gpt_from_hf"]
+__all__ = [
+    "export_mcore_gpt_to_hf",
+    "import_mcore_gpt_from_hf",
+]
 
 
 # This path uses output_quantizer for KV cache quantization.
@@ -109,13 +118,15 @@ def get_kv_cache_scaling_factor(kv_module: nn.Module) -> torch.Tensor:
 
 def get_quantized_state(
     module: torch.nn.Module,
-    dtype: torch.dtype = torch.bfloat16,
+    dtype: torch.dtype = torch.float16,
+    export_vllm_fq_weights_qstate: bool = False,
 ) -> tuple[dict[str, torch.Tensor], str, int]:
     """Return a state_dict, quantization format, and block_size of the module.
 
     Args:
         module: The target module to perform real quantization.
         dtype: The default data type.
+        export_vllm_fq_weights_qstate: Whether to export the weights in bf16 and amax values.
 
     Returns:
         Tuple: state_dict, quantization format, and block_size of the module.
@@ -135,6 +146,9 @@ def get_quantized_state(
 
     if hasattr(module, "expert_bias") and module.expert_bias is not None:
         name_to_value["expert_bias"] = module.expert_bias.to(dtype).cpu()
+
+    if export_vllm_fq_weights_qstate:
+        return get_mcore_vllm_fq_quantized_state(module, name_to_value, dtype)
 
     # Getting the weight scales
     weight_scale = get_weight_scaling_factor(module)
@@ -187,6 +201,7 @@ class GPTModelExporter:
         dtype=torch.bfloat16,
         trust_remote_code: bool = True,
         moe_router_dtype: torch.dtype | None = None,
+        export_vllm_fq_weights_qstate: bool = False,
     ):
         """Create a GPTModel exporter instance."""
         if not isinstance(model, (GPTModel, MambaModel, LLaVAModel)):
@@ -222,6 +237,7 @@ class GPTModelExporter:
         self.model = model.language_model if self.is_multimodal else model
         self.dtype = dtype
         self.trust_remote_code = trust_remote_code
+        self.export_vllm_fq_weights_qstate = export_vllm_fq_weights_qstate
         self.arch = self._hf_config.architectures[0]
         # TODO: May modify this later according to what quantization exported ckpt is, currently only support BF16.
         if self.arch == "GptOssForCausalLM":
@@ -331,7 +347,11 @@ class GPTModelExporter:
 
         # Main export process
         state_dict = self.extra_state_dict if self.export_extra_modules else self.state_dict
-        quantization_format = get_quantization_format(self.model)
+        quantization_format = (
+            get_quantization_format(self.model)
+            if not self.export_vllm_fq_weights_qstate
+            else QUANTIZATION_NONE
+        )
         quantization = None
         kv_cache_quantization = None
 
@@ -378,7 +398,7 @@ class GPTModelExporter:
                 except (OSError, ValueError, ImportError):
                     pass
 
-        if is_last_stage_main_rank:
+        if is_last_stage_main_rank and not self.export_vllm_fq_weights_qstate:
             hf_quant_config = {
                 "producer": {
                     "name": "modelopt",
@@ -398,6 +418,9 @@ class GPTModelExporter:
             and self.is_multimodal
             and pretrained_model_name_or_path is not None
         ):
+            assert not self.export_vllm_fq_weights_qstate, (
+                "Exporting weights in bf16 and amax values is not supported for multimodal models"
+            )
             hf_checkpoint_path = Path(pretrained_model_name_or_path)
             if not hf_checkpoint_path.is_dir():
                 hf_checkpoint_path = tempfile.gettempdir() + "/" + pretrained_model_name_or_path
@@ -466,12 +489,54 @@ class GPTModelExporter:
         torch.distributed.barrier()
 
         if self.export_extra_modules:
+            assert not self.export_vllm_fq_weights_qstate, (
+                "Exporting weights in bf16 and amax values is not supported for extra modules"
+            )
             if is_last_stage_main_rank:
                 save_file(
                     state_dict, save_directory + "/model.safetensors", metadata={"format": "pt"}
                 )
             torch.distributed.barrier()
             return
+
+        if self.export_vllm_fq_weights_qstate:
+            state_dict = gather_mcore_vllm_fq_quantized_state_dict(state_dict, save_directory)
+
+        if (
+            is_last_stage_main_rank
+            and self._hf_config is not None
+            and pretrained_model_name_or_path is not None
+        ):
+            # For models that keep configuration and modeling files as part of the checkpoint,
+            # we need to copy them to the export directory for seamless integration with inference
+            # frameworks.
+            hf_checkpoint_path = Path(pretrained_model_name_or_path)
+            model_type = getattr(self._hf_config, "model_type", None)
+
+            if hf_checkpoint_path.is_dir():
+                # Local directory - files should be there
+                config_file = hf_checkpoint_path / f"configuration_{model_type}.py"
+                modeling_file = hf_checkpoint_path / f"modeling_{model_type}.py"
+            else:
+                # Remote model ID - download from HuggingFace Hub (cached automatically)
+                try:
+                    config_file = hf_hub_download(
+                        repo_id=pretrained_model_name_or_path,
+                        filename=f"configuration_{model_type}.py",
+                    )
+                except Exception:
+                    config_file = ""
+                try:
+                    modeling_file = hf_hub_download(
+                        repo_id=pretrained_model_name_or_path, filename=f"modeling_{model_type}.py"
+                    )
+                except Exception:
+                    modeling_file = ""
+
+            if config_file and os.path.exists(config_file):
+                shutil.copy(config_file, f"{save_directory}/configuration_{model_type}.py")
+            if modeling_file and os.path.exists(modeling_file):
+                shutil.copy(modeling_file, f"{save_directory}/modeling_{model_type}.py")
 
         save_safetensors(state_dict, save_directory)
 
@@ -544,7 +609,9 @@ class GPTModelExporter:
             self._state_dict[prefix] = module
             return
 
-        name_to_value, qformat, block_size = get_quantized_state(module, dtype)
+        name_to_value, qformat, block_size = get_quantized_state(
+            module, dtype, self.export_vllm_fq_weights_qstate
+        )
 
         weight = name_to_value.pop("weight")
         weight_scale, weight_scale_2 = self._get_weight_scales(name_to_value, qformat)
@@ -576,7 +643,9 @@ class GPTModelExporter:
     def _gated_mlp_slicing(
         self, module, prefix, gate_proj_name="gate_proj", up_proj_name="up_proj"
     ):
-        name_to_value, qformat, block_size = get_quantized_state(module, self.dtype)
+        name_to_value, qformat, block_size = get_quantized_state(
+            module, self.dtype, self.export_vllm_fq_weights_qstate
+        )
 
         weight = name_to_value.pop("weight")
         weight_scale, weight_scale_2 = self._get_weight_scales(name_to_value, qformat)
@@ -641,7 +710,9 @@ class GPTModelExporter:
         k_scale_name="k_scale",
         v_scale_name="v_scale",
     ):
-        name_to_value, qformat, block_size = get_quantized_state(module, self.dtype)
+        name_to_value, qformat, block_size = get_quantized_state(
+            module, self.dtype, self.export_vllm_fq_weights_qstate
+        )
 
         q_proj_prefix = prefix + q_proj_name + "."
         k_proj_prefix = prefix + k_proj_name + "."
@@ -764,7 +835,7 @@ class GPTModelExporter:
         for expert in module:
             assert layer_type is not None, "layer_type is required for pack_name_remapping"
             name_to_value, qformat, block_size = get_quantized_state(
-                getattr(expert, layer_type), self.dtype
+                getattr(expert, layer_type), self.dtype, self.export_vllm_fq_weights_qstate
             )
             weight = name_to_value.pop("weight")
             weight_scale, weight_scale_2 = self._get_weight_scales(name_to_value, qformat)
@@ -830,7 +901,7 @@ class GPTModelExporter:
         for expert in module:
             assert layer_type is not None, "layer_type is required for pack_name_remapping"
             name_to_value, qformat, block_size = get_quantized_state(
-                getattr(expert, layer_type), self.dtype
+                getattr(expert, layer_type), self.dtype, self.export_vllm_fq_weights_qstate
             )
             weight = name_to_value.pop("weight")
             bias = name_to_value.pop("bias", None)
@@ -1170,6 +1241,7 @@ def export_mcore_gpt_to_hf(
     dtype: torch.dtype = torch.bfloat16,
     export_dir: Path | str = tempfile.gettempdir(),
     moe_router_dtype: torch.dtype | None = None,
+    export_vllm_fq_weights_qstate: bool = False,
 ):
     """Export Megatron Core GPTModel to unified checkpoint and save to export_dir.
 
@@ -1183,6 +1255,7 @@ def export_mcore_gpt_to_hf(
             eagle_module. Otherwise, only export the base model.
         dtype: The weights data type to export the unquantized layers.
         export_dir: The target export path.
+        export_vllm_fq_weights_qstate: If True, export the weights in bf16 and amax values.
     """
     exporter = GPTModelExporter(
         model,
@@ -1190,6 +1263,7 @@ def export_mcore_gpt_to_hf(
         export_extra_modules=export_extra_modules,
         dtype=dtype,
         moe_router_dtype=moe_router_dtype,
+        export_vllm_fq_weights_qstate=export_vllm_fq_weights_qstate,
     )
     exporter.save_pretrained(export_dir, pretrained_model_name_or_path)
 

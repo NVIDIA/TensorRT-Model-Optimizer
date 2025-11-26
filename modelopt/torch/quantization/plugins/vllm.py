@@ -21,13 +21,20 @@ import torch
 import vllm.model_executor.layers.fused_moe.layer as vllm_fused_moe_layer
 import vllm.model_executor.layers.linear as vllm_linear
 
-try:
-    import vllm.model_executor.layers.fused_moe.shared_fused_moe as vllm_shared_fused_moe_layer
-except ImportError:
-    vllm_shared_fused_moe_layer = None
-
 from ...utils.distributed import ParallelState
 from ..nn import QuantLinearConvBase, QuantModule, QuantModuleRegistry, TensorQuantizer
+
+# Try multiple import paths for vLLM compatibility across versions
+vllm_shared_fused_moe_layer = None
+for module_path in [
+    "vllm.model_executor.layers.fused_moe.shared_fused_moe",  # 0.11.0+
+    "vllm.model_executor.layers.shared_fused_moe.shared_fused_moe",  # 0.10.2
+]:
+    try:
+        vllm_shared_fused_moe_layer = importlib.import_module(module_path)
+        break
+    except ImportError:
+        continue
 
 vllm_fused_moe_package = importlib.import_module("vllm.model_executor.layers.fused_moe.fused_moe")
 
