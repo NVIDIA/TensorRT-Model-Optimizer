@@ -55,8 +55,6 @@ from megatron.core.transformer.moe.router import TopKRouter
 from megatron.core.transformer.moe.shared_experts import SharedExpertMLP
 from megatron.core.transformer.transformer_layer import TransformerLayer
 
-from ..modules import DynamicModuleList
-from .megatron_hooks import L2NormHook
 from modelopt.torch.opt.dynamic import DynamicModule
 from modelopt.torch.opt.hparam import HPType
 from modelopt.torch.opt.searcher import ConstraintsDict
@@ -78,11 +76,12 @@ from ..algorithms import (
     ConstraintsRes,
 )
 from ..hparams.concat import build_concat_hp
-from ..modules import _DynamicLayerNorm
+from ..modules import DynamicModuleList, _DynamicLayerNorm
 from ..modules.utils import get_sliced_tensor, get_sliced_tensor_by_slices
 from ..registry import DMRegistry
 from ..search_space import SampleFunc
 from ..traced_hp import TracedHp
+from .megatron_hooks import MegatronL2NormHook
 
 SUPPORTED_MODELS = {GPTModel: "megatron.core.models.gpt.GPTModel"}
 
@@ -267,7 +266,7 @@ class _DynamicMLP(DynamicModule):
         # This limitation might be fixed in OMNIML-180 (Flexible Importance Estimator)
         # where we separate the importance estimation from the dynamic module.
         max_ffn_size = int(self.get_hparam(self.hparam_name).max)  # type: ignore[arg-type]
-        activation_hook = L2NormHook(max_size=max_ffn_size)
+        activation_hook = MegatronL2NormHook(max_size=max_ffn_size)
         self._register_temp_attribute("_activation_hook", activation_hook)
         # TODO: confusion: why hook_handle is removed manually in export() and not using _register_temp_attribute?
         self.hook_handle = self.linear_fc2.register_forward_hook(activation_hook)
@@ -596,7 +595,7 @@ class _DynamicSelfAttention(DynamicModule):
         num_heads_per_group_max = int(self.get_hparam("num_heads_per_group").max)  # type: ignore[arg-type]
         num_query_groups_max = int(self.get_hparam("num_query_groups").max)  # type: ignore[arg-type]
         max_size = num_heads_per_group_max * num_query_groups_max * self.config.kv_channels
-        activation_hook = L2NormHook(max_size=max_size)
+        activation_hook = MegatronL2NormHook(max_size=max_size)
         self._register_temp_attribute("_activation_hook", activation_hook)
         # TODO: confusion: why hook_handle is removed manually in export() and not using _register_temp_attribute?
         self.hook_handle = self.linear_proj.register_forward_hook(activation_hook)
