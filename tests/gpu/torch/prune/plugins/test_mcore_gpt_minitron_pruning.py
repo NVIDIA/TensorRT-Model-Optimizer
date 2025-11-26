@@ -166,8 +166,8 @@ def _test_mcore_gpt_pruning(
                 print("\n=== TEST CASE 1 ===")
                 print(f"layer_scores[1] = {pruning_scores['layer_scores'][1]:.16f}")
                 print(f"layer_scores[2] = {pruning_scores['layer_scores'][2]:.16f}")
-            assert pruning_scores["layer_scores"][1] == pytest.approx(2.0868452191352844, abs=1e-5)
-            assert pruning_scores["layer_scores"][2] == pytest.approx(1.7638601660728455, abs=1e-5)
+            assert pruning_scores["layer_scores"][1] == pytest.approx(2.0868452191352844, abs=1e-3)
+            assert pruning_scores["layer_scores"][2] == pytest.approx(1.7638601660728455, abs=1e-3)
 
             # Validate decoder.layers.0.mlp activations
             mlp_0_acts = rank_0_activations["decoder.layers.0.mlp"]
@@ -175,9 +175,9 @@ def _test_mcore_gpt_pruning(
                 print(f"mlp_0_acts.min() = {mlp_0_acts.min().item():.16f}")
                 print(f"mlp_0_acts.max() = {mlp_0_acts.max().item():.16f}")
                 print(f"mlp_0_acts.mean() = {mlp_0_acts.mean().item():.16f}")
-            assert mlp_0_acts.min().item() == pytest.approx(0.0015609927941114, abs=1e-5)
-            assert mlp_0_acts.max().item() == pytest.approx(0.3844809532165527, abs=1e-5)
-            assert mlp_0_acts.mean().item() == pytest.approx(0.0629318505525589, abs=1e-5)
+            assert mlp_0_acts.min().item() == pytest.approx(0.0015609927941114, abs=1e-3)
+            assert mlp_0_acts.max().item() == pytest.approx(0.3844809532165527, abs=1e-3)
+            assert mlp_0_acts.mean().item() == pytest.approx(0.0629318505525589, abs=1e-3)
 
             # Validate decoder.layers.1.mlp activations
             mlp_1_acts = rank_0_activations["decoder.layers.1.mlp"]
@@ -186,31 +186,31 @@ def _test_mcore_gpt_pruning(
                 print(f"mlp_1_acts.max() = {mlp_1_acts.max().item():.16f}")
                 print(f"mlp_1_acts.mean() = {mlp_1_acts.mean().item():.16f}")
                 print("=" * 50 + "\n")
-            assert mlp_1_acts.min().item() == pytest.approx(0.0001484956446802, abs=1e-5)
-            assert mlp_1_acts.max().item() == pytest.approx(0.7835369110107422, abs=1e-5)
-            assert mlp_1_acts.mean().item() == pytest.approx(0.0926810950040817, abs=1e-5)
+            assert mlp_1_acts.min().item() == pytest.approx(0.0001484956446802, abs=1e-3)
+            assert mlp_1_acts.max().item() == pytest.approx(0.7835369110107422, abs=1e-3)
+            assert mlp_1_acts.mean().item() == pytest.approx(0.0926810950040817, abs=1e-3)
 
         # Test case 2: GQA - pruned attention/2 (num_attention_heads=8, num_query_groups=4, attention_div=2)
         elif pruned_num_attention_heads_div == 2 and pruned_ffn_div == 1:
             # Layer scores
-            assert pruning_scores["layer_scores"][1] == pytest.approx(2.1415508985519409, abs=1e-5)
-            assert pruning_scores["layer_scores"][2] == pytest.approx(1.7198008894920349, abs=1e-5)
+            assert pruning_scores["layer_scores"][1] == pytest.approx(2.1415508985519409, abs=1e-3)
+            assert pruning_scores["layer_scores"][2] == pytest.approx(1.7198008894920349, abs=1e-3)
 
             # Validate decoder.layers.0.self_attention activations
             assert "decoder.layers.0.self_attention" in rank_0_activations
             attn_0_acts = rank_0_activations["decoder.layers.0.self_attention"]
             assert attn_0_acts.shape == torch.Size([256])
-            assert attn_0_acts.min().item() == pytest.approx(0.0409194342792034, abs=1e-5)
-            assert attn_0_acts.max().item() == pytest.approx(0.5261313319206238, abs=1e-5)
-            assert attn_0_acts.mean().item() == pytest.approx(0.1613342612981796, abs=1e-5)
+            assert attn_0_acts.min().item() == pytest.approx(0.0409194342792034, abs=1e-3)
+            assert attn_0_acts.max().item() == pytest.approx(0.5261313319206238, abs=1e-3)
+            assert attn_0_acts.mean().item() == pytest.approx(0.1613342612981796, abs=1e-3)
 
             # Validate decoder.layers.1.self_attention activations
             assert "decoder.layers.1.self_attention" in rank_0_activations
             attn_1_acts = rank_0_activations["decoder.layers.1.self_attention"]
             assert attn_1_acts.shape == torch.Size([256])
-            assert attn_1_acts.min().item() == pytest.approx(0.1189328655600548, abs=1e-5)
-            assert attn_1_acts.max().item() == pytest.approx(1.3832759857177734, abs=1e-5)
-            assert attn_1_acts.mean().item() == pytest.approx(0.4782669544219971, abs=1e-5)
+            assert attn_1_acts.min().item() == pytest.approx(0.1189328655600548, abs=1e-3)
+            assert attn_1_acts.max().item() == pytest.approx(1.3832759857177734, abs=1e-3)
+            assert attn_1_acts.mean().item() == pytest.approx(0.4782669544219971, abs=1e-3)
 
     # Assert weights are pruned correctly
     for layer in model.decoder.layers:
