@@ -760,11 +760,6 @@ class Quantizer:
         self.logger.info("Disabling specific quantizers...")
         mtq.disable_quantizer(backbone, model_filter_func)
 
-        check_conv_and_mha(
-            backbone, self.config.format == QuantFormat.FP4, self.config.quantize_mha
-        )
-        mtq.print_quant_summary(backbone)
-
         self.logger.info("Quantization completed successfully")
 
 
@@ -1118,6 +1113,11 @@ def main() -> None:
                 logger.info("Model compression completed")
 
             export_manager.save_checkpoint(backbone)
+
+        check_conv_and_mha(
+            backbone, quant_config.format == QuantFormat.FP4, quant_config.quantize_mha
+        )
+        mtq.print_quant_summary(backbone)
 
         export_manager.export_onnx(
             pipe,

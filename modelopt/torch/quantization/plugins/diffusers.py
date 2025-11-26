@@ -28,13 +28,13 @@ from diffusers.models.lora import LoRACompatibleConv, LoRACompatibleLinear
 from packaging.version import parse as parse_version
 
 if parse_version(diffusers.__version__) >= parse_version("0.35.0"):
-    _diffusers_has_attention_mixin = True
+    from diffusers.models.attention import AttentionModuleMixin
     from diffusers.models.attention_dispatch import AttentionBackendName, attention_backend
     from diffusers.models.transformers.transformer_flux import FluxAttention
     from diffusers.models.transformers.transformer_ltx import LTXAttention
     from diffusers.models.transformers.transformer_wan import WanAttention
 else:
-    _diffusers_has_attention_mixin = False
+    AttentionModuleMixin = type("_dummy_type_no_instance", (), {})  # pylint: disable=invalid-name
 from torch.autograd import Function
 from torch.nn import functional as F
 from torch.onnx import symbolic_helper
@@ -178,7 +178,7 @@ class _QuantAttention(_QuantFunctionalMixin):
 QuantModuleRegistry.register({Attention: "Attention"})(_QuantAttention)
 
 
-if _diffusers_has_attention_mixin:
+if AttentionModuleMixin.__module__.startswith(diffusers.__name__):
 
     class _QuantAttentionModuleMixin(_QuantAttention):
         """Quantized AttentionModuleMixin for performing attention-related computations."""
