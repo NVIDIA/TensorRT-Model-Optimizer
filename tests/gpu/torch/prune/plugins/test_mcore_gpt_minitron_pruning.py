@@ -87,6 +87,7 @@ def _test_mcore_gpt_pruning(
             normalization=normalization,
             num_layers_in_first_pipeline_stage=num_layers_in_first_pipeline_stage,
             num_layers_in_last_pipeline_stage=num_layers_in_last_pipeline_stage,
+            use_cpu_initialization=True,  # Ensure deterministic weight init across CUDA versions
         ).cuda()
         return model
 
