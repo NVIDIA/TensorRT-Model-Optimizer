@@ -19,8 +19,6 @@ unit:
     TRANSFORMERS: latest
   image: python:3.$PYTHON
   before_script:
-    # Install cmake to build onnxsim from sdists for Python 3.12 until http://github.com/daquexian/onnx-simplifier/pull/353
-    - if [ "$PYTHON" = "12" ]; then apt-get update && apt-get install -y cmake; fi
     - pip install tox
   script:
     - tox -e py3$PYTHON-torch$TORCH-tf_$TRANSFORMERS-unit
