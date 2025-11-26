@@ -77,7 +77,8 @@ class VllmFqGPTModelExporter(GPTModelExporter):
         os.makedirs(save_directory, exist_ok=True)
         gather_mcore_vllm_fq_quantized_state_dict(self.model, self.state_dict, save_directory)
         assert not (self.is_multimodal and pretrained_model_name_or_path is not None), (
-            "Exporting weights in bf16 and amax values is not supported for multimodal models when pretrained_model_name_or_path is not None"
+            "Exporting weights in bf16 and amax values is not supported for multimodal models "
+            "when pretrained_model_name_or_path is not None"
         )
         assert not self.export_extra_modules, (
             "Exporting extra modules is not supported for vLLM fakequant"
