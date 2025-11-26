@@ -268,7 +268,7 @@ class _DynamicMLP(DynamicModule):
         max_ffn_size = int(self.get_hparam(self.hparam_name).max)  # type: ignore[arg-type]
         activation_hook = MegatronL2NormHook(max_size=max_ffn_size)
         self._register_temp_attribute("_activation_hook", activation_hook)
-        # _register_temp_attribute would not be enough instead of self.hook_handle to remove the hook from the module?
+        # _register_temp_attribute would not be enough instead of self.hook_handle to remove the hook from the module.
         self.hook_handle = self.linear_fc2.register_forward_hook(activation_hook)
         ffn_hidden_size.register_importance(self._estimate_importance)
 
