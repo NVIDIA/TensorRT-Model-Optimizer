@@ -80,7 +80,7 @@ jobs:
       examples: "llm_distill llm_qat llm_sparsity speculative_decoding"
       timeout_minutes: 60
       pip_install_extras: "[hf,dev-test]"
-      runner: "linux-amd64-gpu-l4-latest-1"
+      runner: linux-amd64-gpu-l4-latest-1
 
   example-torch-non-pr:
     if: ${{ !startsWith(github.ref, 'refs/heads/pull-request/') && (github.event_name != 'workflow_dispatch' || inputs.torch_examples != '') }}
@@ -91,7 +91,7 @@ jobs:
       examples: ${{ inputs.torch_examples || 'llm_distill llm_qat llm_sparsity speculative_decoding' }}
       timeout_minutes: 60
       pip_install_extras: "[hf,dev-test]"
-      runner: "linux-amd64-gpu-h100-latest-2"
+      runner: linux-amd64-gpu-h100-latest-2
 
   ##### TensorRT-LLM Example Tests #####
   example-trtllm-pr:
@@ -104,7 +104,7 @@ jobs:
       examples: "llm_autodeploy llm_eval llm_ptq vlm_ptq"
       timeout_minutes: 90
       pip_install_extras: "[hf,dev-test]"
-      runner: "linux-amd64-gpu-h100-latest-1"
+      runner: linux-amd64-gpu-h100-latest-1
 
   example-trtllm-non-pr:
     if: ${{ !startsWith(github.ref, 'refs/heads/pull-request/') && (github.event_name != 'workflow_dispatch' || inputs.trtllm_examples != '') }}
@@ -115,7 +115,7 @@ jobs:
       examples: ${{ inputs.trtllm_examples || 'llm_autodeploy llm_eval llm_ptq vlm_ptq' }}
       timeout_minutes: 90
       pip_install_extras: "[hf,dev-test]"
-      runner: "linux-amd64-gpu-h100-latest-2"
+      runner: linux-amd64-gpu-h100-latest-2
 
   ##### ONNX/TensorRT Example Tests #####
   example-onnx-pr:
@@ -128,7 +128,7 @@ jobs:
       examples: "diffusers onnx_ptq"
       timeout_minutes: 60
       pip_install_extras: "[all,dev-test]"
-      runner: "linux-amd64-gpu-l4-latest-1"
+      runner: linux-amd64-gpu-l4-latest-1
 
   example-onnx-non-pr:
     if: ${{ !startsWith(github.ref, 'refs/heads/pull-request/') && (github.event_name != 'workflow_dispatch' || inputs.onnx_examples != '') }}
@@ -139,7 +139,7 @@ jobs:
       examples: ${{ inputs.onnx_examples || 'diffusers onnx_ptq' }}
       timeout_minutes: 60
       pip_install_extras: "[all,dev-test]"
-      runner: "linux-amd64-gpu-l4-latest-1"
+      runner: linux-amd64-gpu-l4-latest-1
 
   ##### Required Check for PR #####
   example-pr-required-check:
