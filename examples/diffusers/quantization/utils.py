@@ -25,6 +25,7 @@ from diffusers.models.lora import LoRACompatibleConv, LoRACompatibleLinear
 from diffusers.utils import load_image
 
 import modelopt.torch.quantization as mtq
+from modelopt.torch.quantization.plugins.diffusers import AttentionModuleMixin
 
 USE_PEFT = True
 try:
@@ -44,21 +45,24 @@ def filter_func_default(name: str) -> bool:
 
 
 def check_conv_and_mha(backbone, if_fp4, quantize_mha):
-    for _, module in backbone.named_modules():
+    for name, module in backbone.named_modules():
         if isinstance(module, (torch.nn.Conv1d, torch.nn.Conv2d, torch.nn.Conv3d)) and if_fp4:
             module.weight_quantizer.disable()
             module.input_quantizer.disable()
-        elif isinstance(module, Attention):
-            if not quantize_mha:
-                continue
+
+            print(f"Disabled NVFP4 Conv layer quantization for layer {name}")
+
+        elif isinstance(module, (Attention, AttentionModuleMixin)):
             head_size = int(module.inner_dim / module.heads)
-            module.q_bmm_quantizer.disable()
-            module.k_bmm_quantizer.disable()
-            module.v_bmm_quantizer.disable()
-            module.softmax_quantizer.disable()
-            module.bmm2_output_quantizer.disable()
-            if head_size % 16 != 0:
+            if not quantize_mha or head_size % 16 != 0:
+                module.q_bmm_quantizer.disable()
+                module.k_bmm_quantizer.disable()
+                module.v_bmm_quantizer.disable()
+                module.softmax_quantizer.disable()
+                module.bmm2_output_quantizer.disable()
                 setattr(module, "_disable_fp8_mha", True)
+
+                print(f"Disabled Attention layer quantization for layer {name}")
             else:
                 setattr(module, "_disable_fp8_mha", False)
 
