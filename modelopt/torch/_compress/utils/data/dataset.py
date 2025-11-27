@@ -14,8 +14,7 @@
 # limitations under the License.
 # mypy: ignore-errors
 import functools
-from typing import Optional
-from typing import Sequence
+from typing import Optional, Sequence
 
 import numpy as np
 import torch

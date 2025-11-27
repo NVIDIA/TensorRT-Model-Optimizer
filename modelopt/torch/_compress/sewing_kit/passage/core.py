@@ -15,10 +15,9 @@
 
 # mypy: ignore-errors
 from __future__ import annotations
+
 import sys
-
-from collections.abc import Sequence, Callable
-
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import Any, ContextManager, Iterable, Mapping, Optional, Union
 
@@ -27,19 +26,19 @@ try:
 except ImportError:
     from typing_extensions import Self
 
+import torch.nn as nn
 from typing_extensions import override
 
-import torch.nn as nn
+from ..common import logger
 from ..utils import (
     ActivityContext,
-    has_fake_tensor,
+    dynamo_skip,
     fake_tensors,
+    has_fake_tensor,
     is_submodule_of,
     is_submodule_or_same,
     real_tensors,
-    dynamo_skip,
 )
-from ..common import logger
 
 
 @dataclass

@@ -20,8 +20,9 @@ Checkpoint manager for activation hook scoring with periodic saves and resume su
 import json
 import time
 from pathlib import Path
-from typing import Dict, Any, Optional
-from modelopt.torch._compress.tools.logger import mprint, aprint
+from typing import Any, Dict, Optional
+
+from modelopt.torch._compress.tools.logger import aprint, mprint
 
 
 class ScoringCheckpointManager:

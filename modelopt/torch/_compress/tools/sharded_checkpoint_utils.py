@@ -29,7 +29,6 @@ import torch
 import torch.distributed
 import torch.nn as nn
 from huggingface_hub import split_torch_state_dict_into_shards
-from modelopt.torch._compress.tools.logger import mprint
 from safetensors import safe_open
 from safetensors.torch import load_file as safe_load_file
 from safetensors.torch import save_file as safe_save_file

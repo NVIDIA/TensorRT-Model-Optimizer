@@ -107,6 +107,7 @@ optional_deps = {
         "omegaconf==2.3.0",
         "wandb~=0.17.5",
         "lru-dict",
+        "typeguard",
     ],
 }
 

@@ -13,16 +13,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+
 from .core import (
-    Passage,
-    PassageOutput,
     InputArgs,
     OutputValue,
-    Predicate,
+    Passage,
     PassageInputAdapter,
-    PassageOutputAdapter,
     PassageInputOverrides,
+    PassageOutput,
+    PassageOutputAdapter,
     PassageOutputOverrides,
-    always_true_predicate,
+    Predicate,
     always_false_predicate,
+    always_true_predicate,
 )
