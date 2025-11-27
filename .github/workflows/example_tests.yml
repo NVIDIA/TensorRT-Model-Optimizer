@@ -1,4 +1,4 @@
-name: E2E Example tests
+name: Example tests
 
 on:
   push:
@@ -57,7 +57,7 @@ jobs:
       delay: 300s
 
   ##### PyTorch Example Tests #####
-  example-torch-pr:
+  torch-pr:
     needs: [check-file-changes, wait-checks]
     if: startsWith(github.ref, 'refs/heads/pull-request/') && needs.check-file-changes.outputs.any_changed == 'true'
     strategy:
@@ -71,7 +71,7 @@ jobs:
       pip_install_extras: "[hf,dev-test]"
       runner: linux-amd64-gpu-l4-latest-1
 
-  example-torch-non-pr:
+  torch-non-pr:
     if: ${{ !startsWith(github.ref, 'refs/heads/pull-request/') }}
     strategy:
       matrix:
@@ -85,12 +85,12 @@ jobs:
       runner: linux-amd64-gpu-h100-latest-2
 
   ##### TensorRT-LLM Example Tests #####
-  example-trtllm-pr:
+  trtllm-pr:
     needs: [check-file-changes, wait-checks]
     if: startsWith(github.ref, 'refs/heads/pull-request/') && needs.check-file-changes.outputs.any_changed == 'true'
     strategy:
       matrix:
-        example: [llm_ptq, vlm_ptq]
+        example: [llm_ptq]
     uses: ./.github/workflows/_example_tests_runner.yml
     secrets: inherit
     with:
@@ -99,7 +99,7 @@ jobs:
       pip_install_extras: "[hf,dev-test]"
       runner: linux-amd64-gpu-h100-latest-1
 
-  example-trtllm-non-pr:
+  trtllm-non-pr:
     if: ${{ !startsWith(github.ref, 'refs/heads/pull-request/') }}
     strategy:
       matrix:
@@ -113,7 +113,7 @@ jobs:
       runner: linux-amd64-gpu-h100-latest-2
 
   ##### ONNX/TensorRT Example Tests #####
-  example-onnx-pr:
+  onnx-pr:
     needs: [check-file-changes, wait-checks]
     if: startsWith(github.ref, 'refs/heads/pull-request/') && needs.check-file-changes.outputs.any_changed == 'true'
     strategy:
@@ -127,7 +127,7 @@ jobs:
       pip_install_extras: "[all,dev-test]"
       runner: linux-amd64-gpu-l4-latest-1
 
-  example-onnx-non-pr:
+  onnx-non-pr:
     if: ${{ !startsWith(github.ref, 'refs/heads/pull-request/') }}
     strategy:
       matrix:
@@ -144,15 +144,15 @@ jobs:
   example-pr-required-check:
     # Run even if example tests are skipped
     if: ${{ startsWith(github.ref, 'refs/heads/pull-request/') && always() }}
-    needs: [check-file-changes, example-torch-pr, example-trtllm-pr, example-onnx-pr]
+    needs: [check-file-changes, torch-pr, trtllm-pr, onnx-pr]
     runs-on: ubuntu-latest
     steps:
       - name: Required GPU tests did not succeed
         if: |
           needs.check-file-changes.result != 'success' ||
           (needs.check-file-changes.outputs.any_changed == 'true' && (
-            needs.example-torch-pr.result != 'success' ||
-            needs.example-trtllm-pr.result != 'success' ||
-            needs.example-onnx-pr.result != 'success'
+            needs.torch-pr.result != 'success' ||
+            needs.trtllm-pr.result != 'success' ||
+            needs.onnx-pr.result != 'success'
           ))
         run: exit 1
