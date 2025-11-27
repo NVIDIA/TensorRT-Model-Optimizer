@@ -7,19 +7,6 @@ on:
   schedule:
     - cron: "0 0 * * *" # Nightly
   workflow_dispatch: # On-demand
-    inputs:
-      torch_examples:
-        description: "PyTorch examples to test (space-separated, empty to skip)"
-        type: string
-        default: ""
-      trtllm_examples:
-        description: "TensorRT-LLM examples to test (space-separated, empty to skip)"
-        type: string
-        default: "llm_ptq vlm_ptq"
-      onnx_examples:
-        description: "ONNX/TensorRT examples to test (space-separated, empty to skip)"
-        type: string
-        default: "diffusers"
 
 # Cancel previous runs if new commit is pushed to the same PR
 concurrency:
@@ -73,23 +60,27 @@ jobs:
   example-torch-pr:
     needs: [check-file-changes, wait-checks]
     if: startsWith(github.ref, 'refs/heads/pull-request/') && needs.check-file-changes.outputs.any_changed == 'true'
+    strategy:
+      matrix:
+        example: [llm_distill, llm_qat, llm_sparsity, speculative_decoding]
     uses: ./.github/workflows/_example_tests_runner.yml
     secrets: inherit
     with:
       docker_image: "nvcr.io/nvidia/pytorch:25.06-py3"
-      examples: "llm_distill llm_qat llm_sparsity speculative_decoding"
-      timeout_minutes: 60
+      example: ${{ matrix.example }}
       pip_install_extras: "[hf,dev-test]"
       runner: linux-amd64-gpu-l4-latest-1
 
   example-torch-non-pr:
-    if: ${{ !startsWith(github.ref, 'refs/heads/pull-request/') && (github.event_name != 'workflow_dispatch' || inputs.torch_examples != '') }}
+    if: ${{ !startsWith(github.ref, 'refs/heads/pull-request/') }}
+    strategy:
+      matrix:
+        example: [llm_distill, llm_qat, llm_sparsity, speculative_decoding]
     uses: ./.github/workflows/_example_tests_runner.yml
     secrets: inherit
     with:
       docker_image: "nvcr.io/nvidia/pytorch:25.06-py3"
-      examples: ${{ inputs.torch_examples || 'llm_distill llm_qat llm_sparsity speculative_decoding' }}
-      timeout_minutes: 60
+      example: ${{ matrix.example }}
       pip_install_extras: "[hf,dev-test]"
       runner: linux-amd64-gpu-h100-latest-2
 
@@ -97,23 +88,27 @@ jobs:
   example-trtllm-pr:
     needs: [check-file-changes, wait-checks]
     if: startsWith(github.ref, 'refs/heads/pull-request/') && needs.check-file-changes.outputs.any_changed == 'true'
+    strategy:
+      matrix:
+        example: [llm_ptq, vlm_ptq]
     uses: ./.github/workflows/_example_tests_runner.yml
     secrets: inherit
     with:
       docker_image: "nvcr.io/nvidia/tensorrt-llm/release:1.1.0rc2.post2"
-      examples: "llm_autodeploy llm_eval llm_ptq vlm_ptq"
-      timeout_minutes: 90
+      example: ${{ matrix.example }}
       pip_install_extras: "[hf,dev-test]"
       runner: linux-amd64-gpu-h100-latest-1
 
   example-trtllm-non-pr:
-    if: ${{ !startsWith(github.ref, 'refs/heads/pull-request/') && (github.event_name != 'workflow_dispatch' || inputs.trtllm_examples != '') }}
+    if: ${{ !startsWith(github.ref, 'refs/heads/pull-request/') }}
+    strategy:
+      matrix:
+        example: [llm_autodeploy, llm_eval, llm_ptq, vlm_ptq]
     uses: ./.github/workflows/_example_tests_runner.yml
     secrets: inherit
     with:
       docker_image: "nvcr.io/nvidia/tensorrt-llm/release:1.1.0rc2.post2"
-      examples: ${{ inputs.trtllm_examples || 'llm_autodeploy llm_eval llm_ptq vlm_ptq' }}
-      timeout_minutes: 90
+      example: ${{ matrix.example }}
       pip_install_extras: "[hf,dev-test]"
       runner: linux-amd64-gpu-h100-latest-2
 
@@ -121,23 +116,27 @@ jobs:
   example-onnx-pr:
     needs: [check-file-changes, wait-checks]
     if: startsWith(github.ref, 'refs/heads/pull-request/') && needs.check-file-changes.outputs.any_changed == 'true'
+    strategy:
+      matrix:
+        example: [diffusers, onnx_ptq]
     uses: ./.github/workflows/_example_tests_runner.yml
     secrets: inherit
     with:
       docker_image: "nvcr.io/nvidia/tensorrt:25.08-py3"
-      examples: "diffusers onnx_ptq"
-      timeout_minutes: 60
+      example: ${{ matrix.example }}
       pip_install_extras: "[all,dev-test]"
       runner: linux-amd64-gpu-l4-latest-1
 
   example-onnx-non-pr:
-    if: ${{ !startsWith(github.ref, 'refs/heads/pull-request/') && (github.event_name != 'workflow_dispatch' || inputs.onnx_examples != '') }}
+    if: ${{ !startsWith(github.ref, 'refs/heads/pull-request/') }}
+    strategy:
+      matrix:
+        example: [diffusers, onnx_ptq]
     uses: ./.github/workflows/_example_tests_runner.yml
     secrets: inherit
     with:
       docker_image: "nvcr.io/nvidia/tensorrt:25.08-py3"
-      examples: ${{ inputs.onnx_examples || 'diffusers onnx_ptq' }}
-      timeout_minutes: 60
+      example: ${{ matrix.example }}
       pip_install_extras: "[all,dev-test]"
       runner: linux-amd64-gpu-l4-latest-1
 
