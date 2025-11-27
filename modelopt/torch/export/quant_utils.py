@@ -17,6 +17,7 @@
 
 import logging
 from collections.abc import Generator
+from types import SimpleNamespace
 from typing import Any
 from warnings import warn
 
@@ -37,6 +38,7 @@ from modelopt.torch.quantization.utils import (
     quantizer_attr_names,
     weight_attr_names,
 )
+from modelopt.torch.utils import clear_cuda_cache
 
 from ..quantization.nn import SequentialQuantizer, TensorQuantizer
 from .model_config import (
@@ -763,6 +765,8 @@ def to_quantized_weight(
 
         if weight.dim() == 3:
             # for MOE stacked weights
+            # Clear GPU cache to avoid pontential GPU OOM issues for large models.
+            clear_cuda_cache()
             return (weight / weights_scaling_factor.unsqueeze(-1)).to(torch.float8_e4m3fn)
         return (weight / weights_scaling_factor).to(torch.float8_e4m3fn)
 
@@ -824,13 +828,19 @@ def from_quantized_weight(
     raise NotImplementedError(f"quantization format {quantization} not supported")
 
 
-def postprocess_state_dict(state_dict: dict, maxbound: float, quantization: str | None) -> dict:
+def postprocess_state_dict(
+    state_dict: dict,
+    maxbound: float,
+    quantization: str | None,
+    is_modelopt_qlora: bool = False,
+) -> dict:
     """Filters out keys related to weight quantizers and updates KV cache related keys.
 
     Args:
         state_dict: The full model state_dict.
         maxbound: The maximum bound value for the output quantizer.
         quantization: The KV cache quantization format.
+        is_modelopt_qlora: Whether the model is a modelopt-trained QLoRA model.
 
     Returns:
         The filtered state_dict without unnecessary keys like '_amax' and non KV cache output quantizers.
@@ -842,17 +852,29 @@ def postprocess_state_dict(state_dict: dict, maxbound: float, quantization: str 
         "v_bmm_quantizer._bias_value": "v_proj.v_bias",
         "input_quantizer._pre_quant_scale": "pre_quant_scale",
     }
+    skip_keys = ["output_quantizer", "_amax", "_bias_value", "input_quantizer._pre_quant_scale"]
+
+    # For modelopt-trained LoRA models, we need to remove the base_layer prefix from the keys for deployment
+    if is_modelopt_qlora:
+        replacements.update(
+            {
+                "base_layer.weight": "weight",
+                "base_layer.input_scale": "input_scale",
+                "base_layer.weight_scale": "weight_scale",
+            }
+        )
+        skip_keys.append("base_layer")
 
     post_state_dict = {}
 
     for key, value in state_dict.items():
+        # Skip problematic parameters for specific model architectures, e.g., Nemotron Nano VL models
+        if key == "vision_model.radio_model.summary_idxs":
+            logger.info(f"Removing problematic parameter: {key}")
+            continue
+
         # Skip keys not related to quantizers
-        if (
-            "output_quantizer" not in key
-            and "_amax" not in key
-            and "_bias_value" not in key
-            and "input_quantizer._pre_quant_scale" not in key
-        ):
+        if all(skip_key not in key for skip_key in skip_keys):
             post_state_dict[key] = value
             continue
 
@@ -903,6 +925,11 @@ def postprocess_state_dict(state_dict: dict, maxbound: float, quantization: str 
         ):
             keys_to_delete.append(key)
 
+    # remove LoRA adapters from state dict
+    if is_modelopt_qlora:
+        for key in post_state_dict:
+            if "lora" in key and key not in keys_to_delete:
+                keys_to_delete.append(key)
     # Check for tied weights and remove duplicates
     seen_tensors = {}
 
@@ -1019,11 +1046,18 @@ def preprocess_linear_fusion(modules: list[torch.nn.Module], resmooth_only=False
                 module.weight_quantizer.amax = weight_amax
 
 
-def get_quant_config(named_modules: nn.Module | dict[str, nn.Module]) -> dict[str, Any]:
-    """Generate quantization config for a torch model.
+def get_quant_config(
+    model: nn.Module,
+    is_modelopt_qlora: bool = False,
+) -> dict[str, Any]:
+    """Generate quantization config for a model.
+
+    The model should be the root model. It can be fully quantized, partially quantized or
+    mixed-precision quantized.
 
     Args:
-        model: The PyTorch model to analyze
+        model: The PyTorch model to make config for.
+        is_modelopt_qlora: Whether the model is a modelopt-trained QLoRA model.
 
     Returns:
         Dictionary containing the quantization configuration
@@ -1052,24 +1086,27 @@ def get_quant_config(named_modules: nn.Module | dict[str, nn.Module]) -> dict[st
     layer_config_dict = {}
 
     kv_cache_format = QUANTIZATION_NONE
-    for name, module in dict(named_modules).items():
+    for name, module in dict(model.named_modules()).items():
         # Check for standard quantizers or any quantizers from weight attributes
-        has_quantizers = (
-            hasattr(module, "input_quantizer")
-            or hasattr(module, "weight_quantizer")
-            or any(
-                hasattr(module, quantizer_attr_names(weight_name).weight_quantizer)
-                or hasattr(module, quantizer_attr_names(weight_name).input_quantizer)
-                for weight_name in weight_attr_names(module)
-            )
+        weight_names = list(weight_attr_names(module))
+        has_quantizers = any(
+            hasattr(module, quantizer_attr_names(weight_name).weight_quantizer)
+            or hasattr(module, quantizer_attr_names(weight_name).input_quantizer)
+            for weight_name in weight_names
         )
-        if has_quantizers:
+
+        # Skip LORA module and adapters.
+        # ModelOpt does not currently quantize these layers in QLoRA path.
+        skip_layer = is_modelopt_qlora and (
+            hasattr(module, "base_layer") or "lora_A" in name or "lora_B" in name
+        )
+
+        if has_quantizers and not skip_layer:
             quantization_format = get_quantization_format(module)
 
             # For MoE expert modules, we need to extract block size from the correct weight quantizer
             # Try to get block size from each weight attribute (e.g., gate_up_proj, down_proj)
             block_size = 0
-            weight_names = list(weight_attr_names(module))
 
             for weight_name in weight_names:
                 weight_block_size = get_weight_block_size(module, weight_name)
@@ -1085,16 +1122,19 @@ def get_quant_config(named_modules: nn.Module | dict[str, nn.Module]) -> dict[st
             layer_config_dict[name + ".quantization"] = quantization_format
             layer_config_dict[name + ".awq_block_size"] = block_size
 
+        not_enabled = SimpleNamespace(is_enabled=False)
+
         # Find kv cache quant format
         if (
-            hasattr(module, "k_bmm_quantizer")
-            or hasattr(module, "v_bmm_quantizer")
-            or (hasattr(module, "output_quantizer") and module.output_quantizer.is_enabled)
+            getattr(module, "k_bmm_quantizer", not_enabled).is_enabled
+            or getattr(module, "v_bmm_quantizer", not_enabled).is_enabled
+            or getattr(module, "output_quantizer", not_enabled).is_enabled
         ):
+            module_kv_quant = get_kv_cache_dtype(module)
             if kv_cache_format == QUANTIZATION_NONE:
-                kv_cache_format = get_kv_cache_dtype(module)
+                kv_cache_format = module_kv_quant
             else:
-                assert kv_cache_format == get_kv_cache_dtype(module), (
+                assert kv_cache_format == module_kv_quant, (
                     "Do not support mixed precision kv cache quantization"
                 )
 

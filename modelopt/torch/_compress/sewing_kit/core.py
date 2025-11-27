@@ -14,11 +14,14 @@
 # limitations under the License.
 
 # mypy: ignore-errors
+
 from __future__ import annotations
+
 from abc import ABC
 from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import Any, Callable, Iterable, Literal, Optional, Sequence, Union
+
 from typing_extensions import override
 
 try:
@@ -30,19 +33,18 @@ import torch
 import torch.distributed
 import torch.nn as nn
 
-from .utils import distributed_isend_obj, distributed_recv_obj, dynamo_skip
 from .passage import (
-    Passage,
     InputArgs,
     OutputValue,
+    Passage,
+    PassageInputAdapter,
+    PassageInputOverrides,
+    PassageOutputAdapter,
+    PassageOutputOverrides,
     Predicate,
     always_false_predicate,
-    PassageInputAdapter,
-    PassageOutputAdapter,
-    PassageInputOverrides,
-    PassageOutputOverrides,
 )
-
+from .utils import distributed_isend_obj, distributed_recv_obj, dynamo_skip
 
 InputAdapter = Callable[[InputArgs], InputArgs]
 OutputAdapter = Callable[..., OutputValue]

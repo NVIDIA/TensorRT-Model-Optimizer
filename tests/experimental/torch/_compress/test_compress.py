@@ -40,11 +40,8 @@ from modelopt.torch._compress.tools.runtime import NativeDdpRuntime
 # /workspace/puzzletron
 #
 # submit_job --partition interactive --time 0 \
-# --image gitlab-master.nvidia.com/deci/puzzletron:trtllm_main \
+# --image gitlab-master.nvidia.com/deci/puzzletron:modelopt_main \
 # --workdir $MODELOPT SRC DIRECTORY --interactive --gpu 1
-#
-# pip install mip
-# pip install lru-dict
 #
 # export PYTHONPATH=$PYTHONPATH:.:/workspace/puzzletron/v1
 #
