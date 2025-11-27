@@ -22,8 +22,8 @@ This script combines the functionality of both commands into a single workflow:
 2. Then, it calculates subblock statistics
 
 Usage:
-    cd v1
-    python build_library_and_stats.py --config-dir configs --config-name Llama-3_1-8B puzzle_dir=/path/to/puzzle/dir dataset_path=/path/to/dataset
+
+    python modelopt.torch._compress.build_library_and_stats.py --config-dir configs --config-name Llama-3_1-8B puzzle_dir=/path/to/puzzle/dir dataset_path=/path/to/dataset
 
 The script uses the same Hydra configuration as the individual commands and supports
 all the same configuration parameters for both build_replacement_library and calc_subblock_stats.
