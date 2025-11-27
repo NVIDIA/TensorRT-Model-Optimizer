@@ -12,9 +12,11 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+"""
+Replacement library for efficiently loading and managing layer-replaced DeciLM models.
+- Uses replacement_utils for parsing, sorting, and analyzing layer replacement configurations
+"""
 # mypy: ignore-errors
-
-"""Replacement library for DeciLM models"""
 
 import json
 import re
