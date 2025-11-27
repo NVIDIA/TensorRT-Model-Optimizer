@@ -10,7 +10,7 @@
       when: manual
 
 ##### Example Tests #####
-example-onnx:
+example-onnx-bash:
   extends: .tests-default
   timeout: 90m
   image: nvcr.io/nvidia/tensorrt:25.08-py3
@@ -18,14 +18,13 @@ example-onnx:
   parallel:
     matrix:
       - EXAMPLE: [onnx_ptq]
-        TEST_TYPE: bash
   before_script:
     # Add libcudnn*.so and libnv*.so to path
     - export LD_LIBRARY_PATH="${LD_LIBRARY_PATH}:/usr/include:/usr/lib/x86_64-linux-gnu"
   script:
     - pip install ".[all,dev-test]"
     - find examples/$EXAMPLE -name "requirements.txt" | while read req_file; do pip install -r "$req_file" || exit 1; done
-    - if [ "$TEST_TYPE" = "pytest" ]; then pytest -s tests/examples/$EXAMPLE; else bash tests/examples/test_$EXAMPLE.sh; fi
+    - bash tests/examples/test_$EXAMPLE.sh
 
 ##### Megatron / NeMo Integration Tests #####
 megatron-nemo-integration:

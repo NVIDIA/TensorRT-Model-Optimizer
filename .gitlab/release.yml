@@ -10,14 +10,12 @@ build-and-upload-wheels:
     - if: $JET_ONLY != null
       when: never
     - if: $CI_COMMIT_TAG =~ /^\d+\.\d+\.\d+$/
-      when: manual
       variables:
         RELEASE: "true"
         TWINE_USERNAME: svc-dl-algo-ammo
         TWINE_PASSWORD: $ARTIFACTORY_TOKEN # Configured in GitLab > Settings > CI/CD
         REPO_URL: https://urm.nvidia.com/artifactory/api/pypi/sw-dl-algo-ammo-pypi-local
     - if: $CI_PIPELINE_SOURCE == "schedule"
-      when: manual
       variables:
         RELEASE: "false"
         TWINE_USERNAME: gitlab-ci-token
