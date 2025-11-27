@@ -208,60 +208,68 @@ MODEL_DEFAULTS: dict[ModelType, dict[str, Any]] = {
         },
     },
     ModelType.FLUX_DEV: {
-        "height": 1024,
-        "width": 1024,
         "backbone": "transformer",
-        "guidance_scale": 3.5,
-        "max_sequence_length": 512,
         "dataset": {
             "name": "Gustavosta/Stable-Diffusion-Prompts",
             "split": "train",
             "column": "Prompt",
+        },
+        "inference_extra_args": {
+            "height": 1024,
+            "width": 1024,
+            "guidance_scale": 3.5,
+            "max_sequence_length": 512,
         },
     },
     ModelType.FLUX_SCHNELL: {
-        "height": 1024,
-        "width": 1024,
         "backbone": "transformer",
-        "guidance_scale": 3.5,
-        "max_sequence_length": 512,
         "dataset": {
             "name": "Gustavosta/Stable-Diffusion-Prompts",
             "split": "train",
             "column": "Prompt",
         },
+        "inference_extra_args": {
+            "height": 1024,
+            "width": 1024,
+            "guidance_scale": 3.5,
+            "max_sequence_length": 512,
+        },
     },
     ModelType.LTX_VIDEO_DEV: {
-        "height": 512,
-        "width": 704,
         "backbone": "transformer",
-        "num_frames": 121,
-        "negative_prompt": "worst quality, inconsistent motion, blurry, jittery, distorted",
         "dataset": {
             "name": "Gustavosta/Stable-Diffusion-Prompts",
             "split": "train",
             "column": "Prompt",
+        },
+        "inference_extra_args": {
+            "height": 512,
+            "width": 704,
+            "num_frames": 121,
+            "negative_prompt": "worst quality, inconsistent motion, blurry, jittery, distorted",
         },
     },
     ModelType.WAN22_T2V: {
         "backbone": "transformer",
-        "height": 720,
-        "width": 1280,
-        "num_frames": 81,
-        "fps": 16,
-        "guidance_scale": 4.0,
-        "guidance_scale_2": 3.0,
-        "negative_prompt": (
-            "vivid colors, overexposed, static, blurry details, subtitles, style, "
-            "work of art, painting, picture, still, overall grayish, worst quality, "
-            "low quality, JPEG artifacts, ugly, deformed, extra fingers, poorly drawn hands, "
-            "poorly drawn face, deformed, disfigured, deformed limbs, fused fingers, "
-            "static image, cluttered background, three legs, many people in the background, "
-            "walking backwards"
-        ),
         "dataset": {"name": "nkp37/OpenVid-1M", "split": "train", "column": "caption"},
         "from_pretrained_extra_args": {
             "boundary_ratio": 0.875,
+        },
+        "inference_extra_args": {
+            "height": 720,
+            "width": 1280,
+            "num_frames": 81,
+            "fps": 16,
+            "guidance_scale": 4.0,
+            "guidance_scale_2": 3.0,
+            "negative_prompt": (
+                "vivid colors, overexposed, static, blurry details, subtitles, style, "
+                "work of art, painting, picture, still, overall grayish, worst quality, "
+                "low quality, JPEG artifacts, ugly, deformed, extra fingers, poorly drawn hands, "
+                "poorly drawn face, deformed, disfigured, deformed limbs, fused fingers, "
+                "static image, cluttered background, three legs, many people in the background, "
+                "walking backwards"
+            ),
         },
     },
 }
@@ -567,7 +575,7 @@ class Calibrator:
             batched_prompts: List of batched calibration prompts
         """
         self.logger.info(f"Starting calibration with {self.config.num_batches} batches")
-        extra_args = MODEL_DEFAULTS.get(self.model_type, {})
+        extra_args = MODEL_DEFAULTS.get(self.model_type, {}).get("inference_extra_args", {})
 
         with tqdm(total=self.config.num_batches, desc="Calibration", unit="batch") as pbar:
             for i, prompt_batch in enumerate(batched_prompts):
@@ -915,6 +923,7 @@ def create_argument_parser() -> argparse.ArgumentParser:
     model_group.add_argument(
         "--component-dtype",
         action="append",
+        default=[],
         help="Precision for loading each component of the model by format of name:dtype. "
         "You can specify multiple components. "
         "Example: --component-dtype vae:Half --component-dtype transformer:BFloat16",
