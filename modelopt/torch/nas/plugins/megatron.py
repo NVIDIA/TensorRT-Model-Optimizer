@@ -594,7 +594,6 @@ class _DynamicSelfAttention(DynamicModule):
         max_size = num_heads_per_group_max * num_query_groups_max * self.config.kv_channels
         activation_hook = MegatronL2NormHook(max_size=max_size)
         self._register_temp_attribute("_activation_hook", activation_hook)
-        # TODO: confusion: why hook_handle is removed manually in export() and not using _register_temp_attribute?
         self.hook_handle = self.linear_proj.register_forward_hook(activation_hook)
         # NOTE: num_heads_per_group's slice_order will be of length num_attention_heads to be able to sort heads,
         # otherwise we would only have aggregated importance of heads per group.
