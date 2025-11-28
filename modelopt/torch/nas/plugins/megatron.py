@@ -274,9 +274,6 @@ class _DynamicMLP(DynamicModule):
 
     def _estimate_importance(self) -> TracedHp.Importance:
         """Return the activation magnitude-based importance of the ffn_hidden_size."""
-        assert self._activation_hook._activations is not None, (
-            "No activations collected for importance estimation."
-        )
         return self._activation_hook.accumulate()
 
     def set_hidden_size_hp(self, hidden_size: TracedHp) -> None:
@@ -607,9 +604,6 @@ class _DynamicSelfAttention(DynamicModule):
 
     def _estimate_all_head_importance(self) -> TracedHp.Importance:
         """Return the importance for num_attention_heads (num_heads_per_group * num_query_groups)."""
-        assert self._activation_hook._activations is not None, (
-            "No activations collected for importance estimation."
-        )
         # Convert squared sum to L2 norm
         scores = self._activation_hook.accumulate()
         attn_head_importance = torch.linalg.vector_norm(
@@ -625,9 +619,6 @@ class _DynamicSelfAttention(DynamicModule):
 
     def _estimate_query_group_importance(self) -> TracedHp.Importance:
         """Return the importance of the ``num_query_groups`` hparam."""
-        assert self._activation_hook._activations is not None, (
-            "No activations collected for importance estimation."
-        )
         # Convert squared sum to L2 norm
         scores = self._activation_hook.accumulate()
         group_importance = torch.linalg.vector_norm(
