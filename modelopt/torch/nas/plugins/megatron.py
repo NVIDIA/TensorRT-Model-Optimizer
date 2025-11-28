@@ -268,15 +268,12 @@ class _DynamicMLP(DynamicModule):
         max_ffn_size = int(self.get_hparam(self.hparam_name).max)  # type: ignore[arg-type]
         activation_hook = MegatronL2NormHook(max_size=max_ffn_size)
         self._register_temp_attribute("_activation_hook", activation_hook)
-        # TODO: confusion: why hook_handle is removed manually in export() and not using _register_temp_attribute?
+        # _register_temp_attribute would not be enough instead of self.hook_handle to remove the hook from the module.
         self.hook_handle = self.linear_fc2.register_forward_hook(activation_hook)
         ffn_hidden_size.register_importance(self._estimate_importance)
 
     def _estimate_importance(self) -> TracedHp.Importance:
         """Return the activation magnitude-based importance of the ffn_hidden_size."""
-        assert self._activation_hook._activations is not None, (
-            "No activations collected for importance estimation."
-        )
         return self._activation_hook.accumulate()
 
     def set_hidden_size_hp(self, hidden_size: TracedHp) -> None:
@@ -597,7 +594,6 @@ class _DynamicSelfAttention(DynamicModule):
         max_size = num_heads_per_group_max * num_query_groups_max * self.config.kv_channels
         activation_hook = MegatronL2NormHook(max_size=max_size)
         self._register_temp_attribute("_activation_hook", activation_hook)
-        # TODO: confusion: why hook_handle is removed manually in export() and not using _register_temp_attribute?
         self.hook_handle = self.linear_proj.register_forward_hook(activation_hook)
         # NOTE: num_heads_per_group's slice_order will be of length num_attention_heads to be able to sort heads,
         # otherwise we would only have aggregated importance of heads per group.
@@ -607,9 +603,6 @@ class _DynamicSelfAttention(DynamicModule):
 
     def _estimate_all_head_importance(self) -> TracedHp.Importance:
         """Return the importance for num_attention_heads (num_heads_per_group * num_query_groups)."""
-        assert self._activation_hook._activations is not None, (
-            "No activations collected for importance estimation."
-        )
         # Convert squared sum to L2 norm
         scores = self._activation_hook.accumulate()
         attn_head_importance = torch.linalg.vector_norm(
@@ -625,9 +618,6 @@ class _DynamicSelfAttention(DynamicModule):
 
     def _estimate_query_group_importance(self) -> TracedHp.Importance:
         """Return the importance of the ``num_query_groups`` hparam."""
-        assert self._activation_hook._activations is not None, (
-            "No activations collected for importance estimation."
-        )
         # Convert squared sum to L2 norm
         scores = self._activation_hook.accumulate()
         group_importance = torch.linalg.vector_norm(
@@ -1552,7 +1542,7 @@ class _DynamicMCoreLanguageModel(DynamicModule):
 
     def get_activations_and_layer_scores(
         self,
-    ) -> tuple[list[dict[str, torch.Tensor]], dict[int, torch.Tensor]]:
+    ) -> tuple[list[dict[str, dict]], dict[int, torch.Tensor]]:
         """Get the per-rank activations and layer scores from the module."""
         local_activations = {}
         for n, m in self.named_modules():
@@ -1560,7 +1550,8 @@ class _DynamicMCoreLanguageModel(DynamicModule):
             if hasattr(m, "_activations"):
                 local_activations[n] = m._activations
             elif hasattr(m, "_activation_hook"):
-                local_activations[n] = m._activation_hook._activations
+                local_activations[n] = m._activation_hook.state_dict()
+
         activations_per_rank = dist.allgather(
             local_activations, group=get_pipeline_model_parallel_group()
         )
@@ -1572,14 +1563,14 @@ class _DynamicMCoreLanguageModel(DynamicModule):
 
     def set_activations_and_layer_scores(
         self,
-        activations_per_rank: list[dict[str, torch.Tensor]],
+        activations_per_rank: list[dict[str, dict]],
         layer_scores: dict[int, torch.Tensor],
     ) -> None:
         """Set the pre-computed layer_scores and per-rank activations instead of running forward.
 
         Args:
             layer_scores: Dict from layer_number (1-indexed) to score.
-            activations_per_rank: List of dicts from module name to activations. Should match PP size.
+            activations_per_rank: List of dicts from module name to state dict. Should match PP size.
         """
         rank = get_pipeline_model_parallel_rank()
         pp_size = get_pipeline_model_parallel_world_size()
@@ -1593,7 +1584,7 @@ class _DynamicMCoreLanguageModel(DynamicModule):
             if hasattr(m, "_activations"):
                 m._activations = activations_per_rank[rank][n]
             elif hasattr(m, "_activation_hook"):
-                m._activation_hook._activations = activations_per_rank[rank][n]
+                m._activation_hook.load_state_dict(activations_per_rank[rank][n])
 
 
 def drop_mcore_language_model_layers(model: nn.Module, *, layers_to_drop: list[int]) -> None:
