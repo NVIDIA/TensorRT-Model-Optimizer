@@ -116,7 +116,14 @@ class MegatronL2NormHook(ForwardHook):
     def __call__(
         self, module: nn.Module, args: tuple[torch.Tensor, ...], output: torch.Tensor
     ) -> None:
-        """Accumulate activation statistics from the forward pass."""
+        """Accumulate activation statistics from the forward pass.
+
+        Args:
+            module: The module this hook is registered on.
+            args: Tuple of input tensors. args[0] expected shape: [seq_len, batch_size, hidden_size]
+                  (Megatron sequence-first format).
+            output: Output tensor from the module's forward pass.
+        """
         # Gather input [seq_len, batch_size, hidden_size] over all TP regions
         # NOTE: This is not used at the moment since we restrict to TP=1
         input_tensor = gather_from_tensor_model_parallel_region(args[0]).detach()
@@ -241,14 +248,16 @@ class IterativeChannelContributionHook(ForwardHook):
         self.epsilon = 1e-8
 
     def __call__(
-        self, module: nn.Module, args: tuple[torch.Tensor], output: torch.Tensor | tuple
+        self, module: nn.Module, args: tuple[torch.Tensor, ...], output: torch.Tensor | tuple
     ) -> None:
         """Compute channel contributions and prune channels according to schedule.
 
         Args:
             module: The module this hook is registered on.
-            args: Tuple with input tensor of shape (B, T, I).
-            output: Output tensor of shape (B, T, E), or tuple (output_tensor, bias) for parallel layers.
+            args: Tuple with single input tensor. args[0] expected shape: [batch_size, seq_len, input_channels]
+                  (PyTorch batch-first format).
+            output: Output tensor of shape [batch_size, seq_len, output_channels], or tuple (output_tensor, bias)
+                    for parallel layers.
         """
         # Handle case where output is a tuple (e.g., from ColumnParallelLinear/RowParallelLinear)
         # TODO: Consider better design to handle RowParallelLinear and nn.Linear
