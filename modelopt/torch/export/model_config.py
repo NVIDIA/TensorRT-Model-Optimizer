@@ -107,6 +107,10 @@ class LinearConfig:
     # If set to false, we do not split or merge this config during post tp processing.
     tp: bool = True
 
+    # SVDQuant LoRA weights
+    svdquant_lora_a: torch.Tensor = None
+    svdquant_lora_b: torch.Tensor = None
+
     def __del__(self):
         del self.weight
         del self.bias
@@ -114,6 +118,8 @@ class LinearConfig:
         del self.weights_scaling_factor
         del self.weights_scaling_factor_2
         del self.prequant_scaling_factor
+        del self.svdquant_lora_a
+        del self.svdquant_lora_b
 
 
 @dataclass
@@ -292,6 +298,78 @@ class QKVConfig:
             "awq_block_size of QKV should be the same."
         )
         return self.q.awq_block_size
+
+    @property
+    def svdquant_lora_a(self):
+        """Concatenate Q, K, V svdquant_lora_a weights along lowrank dimension.
+
+        For SVDQuant, lora_a has shape (lowrank, in_features).
+        Concatenating along dim 0 gives (3*lowrank, in_features).
+        This enables: input @ fused_lora_a.T to produce the intermediate LoRA activations.
+        """
+        lora_a_list = []
+        lora_a_list = [
+            config.svdquant_lora_a
+            for config in (self.q, self.k, self.v)
+            if config.svdquant_lora_a is not None
+        ]
+
+        if not lora_a_list:
+            return None
+
+        assert len(lora_a_list) == 3, "All Q, K, V must have svdquant_lora_a if any does"
+        # Concatenate along dim 0 (lowrank dimension)
+        return torch.cat(lora_a_list, dim=0)
+
+    @property
+    def svdquant_lora_b(self):
+        """Create block diagonal svdquant_lora_b from Q, K, V.
+
+        Each lora_b has shape (out_features_i, lowrank).
+        We create a block diagonal matrix of shape (d_q+d_k+d_v, 3*lowrank).
+
+        This ensures: input @ fused_lora_a.T @ fused_lora_b.T =
+                      cat([input @ q_lora_a.T @ q_lora_b.T, ...], dim=-1)
+
+        The block diagonal structure is necessary because each LoRA operates
+        independently on its output space (Q, K, or V).
+        """
+        lora_b_list = []
+        lora_b_list = [
+            config.svdquant_lora_b
+            for config in (self.q, self.k, self.v)
+            if config.svdquant_lora_b is not None
+        ]
+
+        if not lora_b_list:
+            return None
+
+        assert len(lora_b_list) == 3, "All Q, K, V must have svdquant_lora_b if any does"
+
+        # Calculate total dimensions
+        total_out_features = sum(lora_b.shape[0] for lora_b in lora_b_list)
+        lowrank = lora_b_list[0].shape[1]
+        total_lowrank = 3 * lowrank
+
+        # Create block diagonal matrix
+        fused_lora_b = torch.zeros(
+            total_out_features,
+            total_lowrank,
+            dtype=lora_b_list[0].dtype,
+            device=lora_b_list[0].device,
+        )
+
+        offset_out = 0
+        offset_rank = 0
+        for lora_b in lora_b_list:
+            out_dim, rank_dim = lora_b.shape
+            fused_lora_b[
+                offset_out : offset_out + out_dim, offset_rank : offset_rank + rank_dim
+            ] = lora_b
+            offset_out += out_dim
+            offset_rank += rank_dim
+
+        return fused_lora_b
 
 
 @dataclass

@@ -266,6 +266,10 @@ def merge_qkv(model_config):
                 ), "Quantization formats of q,k,v must be the same."
                 attention.qkv.quantization = splitted_qkv.q.quantization
 
+                # Merge SVDQuant LoRA weights if present
+                attention.qkv.svdquant_lora_a = splitted_qkv.svdquant_lora_a
+                attention.qkv.svdquant_lora_b = splitted_qkv.svdquant_lora_b
+
                 # Collect GPU memory from the deleted tensors
                 del splitted_qkv
 

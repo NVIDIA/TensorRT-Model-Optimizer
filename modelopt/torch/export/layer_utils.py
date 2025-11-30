@@ -598,6 +598,14 @@ def build_linear_config(module: nn.Module, linear_type: str) -> LinearConfig:
     config.prequant_scaling_factor = get_prequant_scaling_factor(module)
     config.awq_block_size = get_weight_block_size(module)
     config.quantization = get_quantization_format(module)
+
+    # Extract SVDQuant LoRA weights if present
+    if hasattr(module, "weight_quantizer"):
+        if hasattr(module.weight_quantizer, "svdquant_lora_a"):
+            config.svdquant_lora_a = module.weight_quantizer.svdquant_lora_a
+        if hasattr(module.weight_quantizer, "svdquant_lora_b"):
+            config.svdquant_lora_b = module.weight_quantizer.svdquant_lora_b
+
     return config
 
 

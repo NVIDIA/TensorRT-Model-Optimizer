@@ -925,10 +925,11 @@ def postprocess_state_dict(
         ):
             keys_to_delete.append(key)
 
-    # remove LoRA adapters from state dict
+    # remove LoRA adapters from state dict (but preserve SVDQuant LoRA weights)
     if is_modelopt_qlora:
         for key in post_state_dict:
-            if "lora" in key and key not in keys_to_delete:
+            # Keep SVDQuant LoRA weights, only remove PEFT LoRA adapters
+            if "lora" in key and "_svdquant_lora" not in key and key not in keys_to_delete:
                 keys_to_delete.append(key)
     # Check for tied weights and remove duplicates
     seen_tensors = {}
