@@ -25,6 +25,56 @@ from modelopt.torch._compress.decilm.deci_lm_hf_code.block_config import (
 )
 
 
+def calculate_kv_dim(n_heads_in_group: int, n_head: int, n_embd: int) -> int:
+    """Calculate the key-value dimension for grouped-query attention.
+
+    TODO: Consider a better place for this function.
+    Args:
+        n_heads_in_group: Number of attention heads per key-value group.
+        n_head: Total number of attention heads.
+        n_embd: Embedding dimension.
+
+    Returns:
+        Combined dimension for key and value tensors (2 * n_kv_heads * head_size).
+    """
+    if n_heads_in_group is None:
+        return 0
+    n_kv_heads = n_head // n_heads_in_group
+    head_size = n_embd // n_head
+    kv_dim = 2 * n_kv_heads * head_size
+    return kv_dim
+
+
+def raise_unknown_subblock_config_error(subblock_config: Any) -> None:
+    """Raise an error for invalid subblock configuration types.
+
+    TODO: Consider a better place for this function.
+    Args:
+        subblock_config: The invalid subblock configuration object.
+
+    Raises:
+        ValueError: Always raised with a message indicating the expected types.
+    """
+    raise ValueError(
+        f"subblock_config should be an instance of FFNConfig or AttentionConfig, instead got {type(subblock_config)}"
+    )
+
+
+def sizeof_dtype(dtype: torch.dtype | str) -> int | float:
+    """Return the size in bytes of the given data type.
+
+    TODO: Consider a better place for this function.
+    Args:
+        dtype: PyTorch data type or custom type string (e.g., 'nvfp4').
+
+    Returns:
+        Size in bytes of the data type. Special case: 'nvfp4' returns ~0.588 bytes.
+    """
+    if dtype == "nvfp4":
+        return 1 / 1.7
+    return torch.tensor([], dtype=dtype).element_size()
+
+
 def block_config_to_str(block_config: BlockConfig | dict[str, Any] | None) -> str | None:
     """
     Convert a BlockConfig to a human-readable string representation.
