@@ -108,6 +108,7 @@ optional_deps = {
         "wandb~=0.17.5",
         "lru-dict",
         "typeguard",
+        "pandas",
     ],
 }
 
