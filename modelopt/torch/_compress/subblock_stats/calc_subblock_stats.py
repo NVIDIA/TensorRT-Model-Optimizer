@@ -61,7 +61,7 @@ T_DataClass = TypeVar("T_DataClass")
 
 """
 Usage:
-python -m v1.calc_subblock_stats PUZZLE_DIR [ --benchmark_iterations 1000 ]
+python -m modelopt.torch._compress.subblock_stats.calc_subblock_stats PUZZLE_DIR [ --benchmark_iterations 1000 ]
 
 --benchmark_iterations=None (the default) means that the code won't use infery to benchmark runtime,
   only memory stats will be calculated. If you want to benchmark runtime, run inside an infery-llm docker.
@@ -152,14 +152,6 @@ def calculate_subblock_stats(
         parent_layer_indices = subblock_config_indexed["parent_layer_indices"]
 
         if is_calc_runtime:
-            # TODO old code, to be removed
-            # from puzzle_tools.calc_subblock_runtime import get_infery_runners, measure_runtime_ms
-            # prefill_runners, decode_runners = get_infery_runners(subblock_config, batch_size, prefill_seq_len,
-            #                                                      generation_seq_len, n_embd, n_head)
-            # total_runtime_ms, prefill_runtime_ms, decode_runtime_ms = \
-            #     measure_runtime_ms(prefill_runners, decode_runners, batch_size, generation_seq_len,
-            #                        benchmark_iterations, use_cuda_graph)
-
             total_runtime_ms = runtime_by_subblock_dict[subblock_config]
             prefill_runtime_ms = None
             decode_runtime_ms = None
@@ -216,7 +208,7 @@ def calculate_subblock_stats(
     non_block_params = calculate_non_block_params(n_embd, vocab_size)
 
     # TODO
-    # Lior Kadoch: the semantics here is wrong why do we refer, prefill_runtime_ms as embedding_runtime_ms and lm_head_runtime_ms as decode_runtime_ms ?
+    # the semantics here is wrong why do we refer, prefill_runtime_ms as embedding_runtime_ms and lm_head_runtime_ms as decode_runtime_ms ?
     # Prefill is the first the user prompt inference, and Decode refer to the next generation process. both processes use all the model layers.
     subblock_stats["non_block"] = {
         "runtime_ms": non_block_runtime_ms,
