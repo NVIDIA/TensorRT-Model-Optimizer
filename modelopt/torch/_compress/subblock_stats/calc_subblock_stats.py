@@ -32,7 +32,7 @@ from typing import Iterable, Optional, Type, TypeVar
 import hydra
 import pandas as pd
 import torch
-from frozendict import frozendict
+from immutabledict import immutabledict
 from omegaconf import DictConfig, ListConfig, OmegaConf
 from tqdm import tqdm
 
@@ -73,7 +73,7 @@ def calculate_subblock_stats(
     calc_subblock_stats_config: DictConfig,
     teacher_dir: Path,
     master_puzzle_dir: Path,
-    subblock_configs: list[frozendict[str, AttentionConfig | FFNConfig]],
+    subblock_configs: list[immutabledict[str, AttentionConfig | FFNConfig]],
     batch_size: int,
     prefill_seq_len: int,
     generation_seq_len: int,
@@ -314,7 +314,7 @@ def calculate_subblock_stats_for_puzzle_dir(
         )
         moe_stats_file = None
 
-    subblock_stats_args = {frozendict(x["args"]) for x in subblock_stats}
+    subblock_stats_args = {immutabledict(x["args"]) for x in subblock_stats}
 
     data_types = [
         ("nvfp4", "nvfp4", "nvfp4"),
@@ -359,7 +359,7 @@ def calculate_subblock_stats_for_puzzle_dir(
             moe_stats_file=moe_stats_file,
         )
 
-        if frozendict(curr_subblock_stats["args"]) in subblock_stats_args:
+        if immutabledict(curr_subblock_stats["args"]) in subblock_stats_args:
             raise ValueError(
                 f"Failed merging subblock_stats. The following arguments already existed in the file: {curr_subblock_stats['args']}"
             )
@@ -387,7 +387,7 @@ def _load_subblock_configs(
         # Use FFNConfig defaults (hidden_act will use its default value)
         ffn_config = FFNConfig(intermediate_size=ffn_hidden_size)
         extra_ffn_subblock_configs.append(
-            frozendict({"subblock_config": ffn_config, "parent_layer_indices": tuple([-1])})
+            immutabledict({"subblock_config": ffn_config, "parent_layer_indices": tuple([-1])})
         )  # -1 to indicate that this sublock has no parent layer
     subblock_configs.extend(extra_ffn_subblock_configs)
 
@@ -428,13 +428,13 @@ def _load_subblock_configs_from_replacement_library(
 
         for block_config in layer_replacement["child_block_configs"]:
             block_config: BlockConfig
-            attention_frozen_dict = frozendict(
+            attention_frozen_dict = immutabledict(
                 {
                     "subblock_config": block_config.attention,
                     "parent_layer_indices": tuple(layer_replacement["parent_layer_indices"]),
                 }
             )
-            ffn_frozen_dict = frozendict(
+            ffn_frozen_dict = immutabledict(
                 {
                     "subblock_config": block_config.ffn,
                     "parent_layer_indices": tuple(layer_replacement["parent_layer_indices"]),
@@ -445,7 +445,7 @@ def _load_subblock_configs_from_replacement_library(
 
             if block_config.parallel_blocks is not None:
                 for block_idx, internal_block_config in enumerate(block_config.parallel_blocks):
-                    attention_frozen_dict = frozendict(
+                    attention_frozen_dict = immutabledict(
                         {
                             "subblock_config": internal_block_config.attention,
                             "parent_layer_indices": tuple(
@@ -454,7 +454,7 @@ def _load_subblock_configs_from_replacement_library(
                             "inner_block_idx": block_idx,
                         }
                     )
-                    ffn_frozen_dict = frozendict(
+                    ffn_frozen_dict = immutabledict(
                         {
                             "subblock_config": internal_block_config.ffn,
                             "parent_layer_indices": tuple(
