@@ -29,7 +29,7 @@ from onnx_graphsurgeon.ir.tensor import Constant, Tensor, Variable
 from onnxruntime.quantization.calibrate import CalibrationDataReader
 
 from modelopt.onnx.logging_config import logger
-from modelopt.onnx.op_types import is_copy_op, is_linear_op
+from modelopt.onnx.op_types import get_copy_ops, is_copy_op, is_linear_op
 from modelopt.onnx.quantization.ort_utils import create_inference_session
 from modelopt.onnx.utils import (
     find_lowest_common_ancestor,
@@ -173,7 +173,7 @@ def has_path_type(
 def get_fusible_backbone(node: Node, graph: Graph) -> Node | None:
     """Returns the linear backbone node for a given node if it matches the pattern.
 
-    TensorRT fuses convolution with BN, Relu etc. when in some specific pattern.
+    TensorRT fuses convolution with BN, Relu, MaxPool etc. when in some specific pattern.
     This rule tries to match some of those patterns.
     Note. BiasAdd and ConstMul are optional in path types.
 
@@ -190,7 +190,7 @@ def get_fusible_backbone(node: Node, graph: Graph) -> Node | None:
             return root
 
         for tensor in root.inputs:
-            if not isinstance(tensor, Constant):
+            if not isinstance(tensor, Constant) and tensor.inputs:
                 parent_node = tensor.inputs[0]
                 bb = _get_backbone(parent_node)
                 if bb:
@@ -207,7 +207,7 @@ def get_fusible_backbone(node: Node, graph: Graph) -> Node | None:
             ["Mul", "Sigmoid", "BatchNormalization", conv_type],
         ]
     for idx, path_type in enumerate(fusible_linear_path_types):
-        if has_path_type(node, graph, path_type, is_forward=False, wild_card_types=[]):
+        if has_path_type(node, graph, path_type, is_forward=False, wild_card_types=get_copy_ops()):
             return _get_backbone(node)
 
     return None
@@ -642,8 +642,12 @@ def _find_nodes_from_op_types_to_exclude(graph: Graph, op_types_to_exclude=None)
 def _find_int4_quantizable_weights(
     graph: onnx.GraphProto,
     nodes_to_exclude: list[str],
-) -> list[tuple[onnx.ValueInfoProto, onnx.ValueInfoProto, bool, int]]:
-    """Finds the int4 quantizable weights from the graph."""
+) -> list[tuple[onnx.ValueInfoProto, onnx.ValueInfoProto, bool, int, str]]:
+    """Finds the int4 quantizable weights from the graph.
+
+    Returns:
+        list of tuples: (act_tensor, weight_tensor, do_transpose, gemm_io_type, node_name)
+    """
     wa_pack = []
     gemm_nodes = [
         node
@@ -674,7 +678,8 @@ def _find_int4_quantizable_weights(
             attr.name == "transB" and attr.i > 0 for attr in gemm.attribute
         )
 
-        wa_pack.append((act_tensor, weight_tensor, do_transpose, gemm_io_type))
+        # Include node name for proper matching with layers_8bit_set
+        wa_pack.append((act_tensor, weight_tensor, do_transpose, gemm_io_type, gemm.name))
 
     return wa_pack
 
@@ -762,6 +767,8 @@ def get_layer_precision_mapping(
         pattern_regexes = [
             re.compile(r"^/model/layers\.(\d+)/attn/qkv_proj/MatMul$"),
             re.compile(r"^/model/layers\.(\d+)/attn/v_proj/MatMul$"),
+            re.compile(r"^/model/layers\.(\d+)/self_attn/qkv_proj/MatMul$"),
+            re.compile(r"^/model/layers\.(\d+)/self_attn/v_proj/MatMul$"),
             re.compile(r"^/model/layers\.(\d+)/mlp/down_proj/MatMul$"),
         ]
 
@@ -812,12 +819,12 @@ def get_layer_precision_mapping(
                 if (i - rest_start) % 3 == 0:
                     layers_8bit_set.add(names_sorted[i])
         layers_list_8bit = list(layers_8bit_set)
-
     # NEW: Create layer info mapping with precision, block_size, and axis
     layer_info = {}
-    for i, (act_tensor, weight_tensor, do_transpose, gemm_io_type) in enumerate(wa_pack):
+    for i, (act_tensor, weight_tensor, do_transpose, gemm_io_type, node_name) in enumerate(wa_pack):
         weight_name = weight_tensor.name
-        if should_quantize_to_8bit(weight_name, layers_list_8bit):
+        # Use node_name for matching against layers_8bit patterns
+        if should_quantize_to_8bit(node_name, layers_list_8bit):
             layer_info[weight_name] = {
                 "precision": 8,
                 "block_size": -1,  # Per-channel for 8-bit
@@ -866,7 +873,7 @@ def get_layer_info(
     layers_8bit = kwargs.get("layers_8bit")
     gather_block_size = kwargs.get("gather_block_size", DEFAULT_GATHER_BLOCK_SIZE)
     gather_quantize_axis = kwargs.get("gather_quantize_axis", DEFAULT_GATHER_QUANTIZE_AXIS)
-    if enable_mixed_quant:
+    if enable_mixed_quant or layers_8bit:
         layer_info = get_layer_precision_mapping(
             onnx_model,
             layers_8bit,
@@ -1002,7 +1009,6 @@ def find_nodes_from_matmul_to_exclude(
         logger.debug("No MatMul nodes found in the model")
         return []
 
-    nodes_to_exclude = []
     logger.debug(f"Found {len(matmul_nodes)} MatMul nodes to analyze")
 
     if calibration_shapes:

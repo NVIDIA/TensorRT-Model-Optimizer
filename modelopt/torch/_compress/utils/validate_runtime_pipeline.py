@@ -12,6 +12,15 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+"""
+Model evaluation utilities for models split across multiple GPUs in pipeline-parallel mode.
+
+Coordinates forward passes and loss computation through model shards distributed across GPUs
+using sewing_kit's StitchedModule framework. Relies on validation.py for core loss computation.
+
+Used by validate_model.py during activation scoring for sharded models.
+"""
 # mypy: ignore-errors
 
 from statistics import mean
@@ -20,14 +29,14 @@ import numpy as np
 import torch
 import torch.distributed
 import wandb
-from modelopt.torch._compress.tools.logger import mprint
-from modelopt.torch._compress.tools.checkpoint_utils import init_module_with_state_dict
+from torch.utils.data import DataLoader
+from tqdm import tqdm
+
 from modelopt.torch._compress.decilm.deci_lm_hf_code.configuration_decilm import DeciLMConfig
 from modelopt.torch._compress.decilm.deci_lm_hf_code.modeling_decilm import (
     DeciLMForCausalLM,
     LMHead,
 )
-from modelopt.torch._compress.tools.runtime import IRuntime
 from modelopt.torch._compress.sewing_kit import (
     ExternalTarget,
     InputArgs,
@@ -42,8 +51,9 @@ from modelopt.torch._compress.sewing_kit.utils import (
     distributed_send_obj,
     fake_tensor,
 )
-from torch.utils.data import DataLoader
-from tqdm import tqdm
+from modelopt.torch._compress.tools.checkpoint_utils import init_module_with_state_dict
+from modelopt.torch._compress.tools.logger import mprint
+from modelopt.torch._compress.tools.runtime import IRuntime
 from modelopt.torch._compress.tools.sharded_checkpoint_utils import DummyBlock
 from modelopt.torch._compress.utils.validation import _organize_outputs, calculate_batch_outputs
 

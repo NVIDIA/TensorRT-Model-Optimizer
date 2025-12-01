@@ -12,6 +12,28 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+"""
+This module constructs the replacement library JSON files from a puzzle directory containing
+multiple trained model checkpoints. It analyzes checkpoints to extract unique block and subblock
+configurations, builds a library of available replacements, and generates solutions for layer
+replacement in compressed models. The resulting replacement library can then be used by
+ReplacementLibrary to efficiently load models with mixed teacher/student layers.
+
+Standard Puzzle Usage:
+======================
+python -m modelopt.torch._compress.replacement_library.build_replacement_library PUZZLE_DIR
+
+Teacher checkpoint dir is assumed to be inside PUZZLE_DIR/ckpts/teacher (symlink is recommended)
+though you can supply an explicit --teacher_checkpoint_dir.
+
+--add_ffn_no_ops and --add_attention_no_ops are optional (default True),
+
+
+Untrained puzzle run (with bypass):
+===================================
+The subblock that doesn't interest you in the checkpoint should be no_op.
+
+"""
 # mypy: ignore-errors
 
 import json
@@ -42,24 +64,6 @@ from modelopt.torch._compress.tools.logger import mprint
 from modelopt.torch._compress.tools.robust_json import json_dump
 from modelopt.torch._compress.utils.parsing import format_global_config
 from modelopt.torch._compress.utils.utils import block_config_to_str, subblock_config_to_str
-
-"""
-Standard Puzzle Usage:
-======================
-python -m v1.build_replacement_library PUZZLE_DIR
-
-Teacher checkpoint dir is assumed to be inside PUZZLE_DIR/ckpts/teacher (symlink is recommended)
-though you can supply an explicit --teacher_checkpoint_dir.
-
---add_ffn_no_ops and --add_attention_no_ops are optional (default True),
-
-
-Untrained puzzle run (with bypass):
-===================================
-The subblock that doesn't interest you in the checkpoint should be no_op.
-
-
-"""
 
 UNIQUE_SUBBLOCK_IDENTIFIER = ["block_config", "attention_config", "ffn_config", "block_idx"]
 CHECKPOINTS_DIR_NAME = "ckpts"

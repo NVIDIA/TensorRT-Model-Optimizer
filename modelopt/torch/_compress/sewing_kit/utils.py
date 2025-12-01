@@ -16,7 +16,7 @@
 from __future__ import annotations
 
 import inspect
-from collections.abc import Sequence, Mapping
+from collections.abc import Mapping, Sequence
 from contextlib import contextmanager
 from typing import (
     Any,
@@ -31,17 +31,17 @@ from typing import (
     cast,
     overload,
 )
-from typing_extensions import override
+
 import torch
-import torch.distributed
-import torch._dynamo
 import torch._C
-from torch import Tensor
-import torch.utils._pytree as pytree
+import torch._dynamo
+import torch.distributed
 import torch.nn as nn
 import torch.nn.functional as F
+import torch.utils._pytree as pytree
+from torch import Tensor
 from torch._subclasses import FakeTensor, FakeTensorMode
-
+from typing_extensions import override
 
 Fn = TypeVar("Fn", bound=Callable)
 
