@@ -20,7 +20,7 @@ from onnx import TensorProto, helper, numpy_helper
 from modelopt.onnx.export import NVFP4QuantExporter
 from modelopt.onnx.export.int4_exporter import INT4QuantExporter
 from modelopt.onnx.export.nvfp4_exporter import _cast_fp4, _cast_fp8
-from modelopt.onnx.quantization.qdq_utils import quantize_weights_to_mxfp8
+from modelopt.onnx.export.mxfp8_exporter import MXFP8QuantExporter
 
 
 def create_test_model_with_int4_dq_reshape_transpose_matmul(constant_scale: bool = False):
@@ -471,15 +471,15 @@ class TestCastFunctions:
         assert np.all(result == expected_array)
 
 
-class TestQuantizeWeightsToMXFP8:
-    """Test suite for quantize_weights_to_mxfp8 function."""
+class TestMXFP8QuantExporter:
+    """Test suite for MXFP8QuantExporter."""
 
     def test_basic_mxfp8_quantization(self):
         """Test basic MXFP8 quantization with TRT_MXFP8DequantizeLinear nodes."""
         model = create_test_model_with_mxfp8_dq()
 
         # Run MXFP8 quantization
-        quantized_model = quantize_weights_to_mxfp8(model)
+        quantized_model = MXFP8QuantExporter.process_model(model)
 
         # Verify weight is converted to FP8
         weight_tensor = next(
@@ -510,7 +510,7 @@ class TestQuantizeWeightsToMXFP8:
         model = create_test_model_with_mxfp8_dq()
 
         # Run MXFP8 quantization
-        quantized_model = quantize_weights_to_mxfp8(model)
+        quantized_model = MXFP8QuantExporter.process_model(model)
 
         # Verify output_dtype is set to FP16
         dq_node = next(
@@ -526,7 +526,7 @@ class TestQuantizeWeightsToMXFP8:
         model = create_test_model_with_mxfp8_dq()
 
         # Run MXFP8 quantization
-        quantized_model = quantize_weights_to_mxfp8(model)
+        quantized_model = MXFP8QuantExporter.process_model(model)
 
         # Verify Gelu approximation is set to tanh
         gelu_node = next(node for node in quantized_model.graph.node if node.op_type == "Gelu")
@@ -574,7 +574,7 @@ class TestQuantizeWeightsToMXFP8:
         model = helper.make_model(graph)
 
         # Run MXFP8 quantization (should use default values)
-        quantized_model = quantize_weights_to_mxfp8(model)
+        quantized_model = MXFP8QuantExporter.process_model(model)
 
         # Verify the model is still processed correctly
         weight_tensor = next(

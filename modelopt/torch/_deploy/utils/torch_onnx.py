@@ -42,7 +42,6 @@ from modelopt.onnx.export import (
 )
 from modelopt.onnx.quantization.qdq_utils import (
     qdq_to_dq,
-    quantize_weights_to_mxfp8,
     replace_zero_scale_with_smallest_nonzero,
 )
 from modelopt.onnx.utils import (
@@ -364,6 +363,11 @@ def is_fp8_quantized(model: nn.Module) -> bool:
             and hasattr(module, "input_quantizer")
             and module.weight_quantizer._num_bits == (4, 3)
             and module.input_quantizer._num_bits == (4, 3)
+            # Exclude MXFP8 which also uses (4,3) but has block_sizes with scale_bits
+            and not (
+                module.input_quantizer.block_sizes
+                and module.input_quantizer.block_sizes.get("scale_bits", None) == (8, 0)
+            )
         ):
             return True
     return False
@@ -560,11 +564,8 @@ def get_onnx_bytes_and_metadata(
 
     # Convert dummy TRT_FP4QDQ nodes to 2DQ format if the model is quantized in FP4 mode
     # Or convert weights to MXFP8 format if the model is quantized in MXFP8 mode
-    if is_int4_quantized(model) or is_fp4_quantized(model):
+    if is_int4_quantized(model) or is_fp4_quantized(model) or is_mxfp8_quantized(model):
         onnx_opt_graph = quantize_weights(model, onnx_opt_graph)
-    elif is_mxfp8_quantized(model):
-        # TODO: Implement the MXFP8QuantExporter
-        onnx_opt_graph = quantize_weights_to_mxfp8(onnx_opt_graph)
 
     if dq_only:
         onnx_opt_graph = qdq_to_dq(onnx_opt_graph)
