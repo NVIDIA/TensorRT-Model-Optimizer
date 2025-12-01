@@ -13,6 +13,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # mypy: ignore-errors
+
+"""Calculate memory usage and parameter counts for neural network subblocks.
+
+This module provides utilities to compute memory footprints and parameter counts
+for different subblock types (FFN, Attention, Mamba, MoE) in large language models,
+considering various data types, batch sizes, and sequence lengths.
+"""
+
 import json
 import math
 from pathlib import Path
