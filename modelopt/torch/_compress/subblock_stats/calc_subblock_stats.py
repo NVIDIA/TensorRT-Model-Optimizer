@@ -268,13 +268,6 @@ def calculate_subblock_stats_for_puzzle_dir(
     subblock_stats_filename: str = "subblock_stats.json",
     moe_stats_filename: str = "moe_stats.json",
 ) -> None:
-    # ==== START === Setup for attach-helper ====
-    # import sys
-    # import os
-    # sys.path.insert(0, os.environ["ATTACH_HELPER_INSTALLATION_PATH"])
-    # from attach_helper import debugging_setup
-    # debugging_setup()  # You can optionally pass a name to identify the job (e.g. `debugging_setup(name="my_script")`)
-    # ==== END === Setup for attach-helper ====
     if isinstance(batch_sizes, str):
         batch_sizes = [
             int(batch_size) for batch_size in batch_sizes.strip("[]").replace(" ", "").split(",")
