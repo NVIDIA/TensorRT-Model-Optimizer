@@ -29,9 +29,13 @@ from modelopt.torch.utils import print_rank_0
 from modelopt.torch.utils.distributed import DistributedProcessGroup, ParallelState
 from modelopt.torch.utils.network import bind_forward_method, unpatch_forward_method
 
+from .calib import MseCalibrator
 from .conversion import create_and_replace_svdquant_linear_on_the_fly, set_quantizer_by_cfg_context
 from .nn import QuantModule, SequentialQuantizer, TensorQuantizer
 from .utils import (
+    disable_calib,
+    enable_fake_quant,
+    enable_quant,
     enable_weight_access_and_writeback,
     is_quantized_column_parallel_linear,
     is_quantized_linear,
@@ -181,6 +185,90 @@ def max_calibrate(model: nn.Module, forward_loop: ForwardLoop | None = None, dis
             module.sync_moe_local_experts_amax()
 
 
+@torch.no_grad()
+def mse_calibrate(
+    model: nn.Module,
+    forward_loop: ForwardLoop | None = None,
+    distributed_sync=True,
+    num_steps: int = 10,
+    start_multiplier: float = 0.25,
+    stop_multiplier: float = 4.0,
+):
+    """Calibrate the model using MSE-based amax search.
+
+    This calibration method first uses max calibration to get initial amax values,
+    then searches for better amax values by minimizing the MSE between original
+    and quantized tensors.
+
+    Args:
+        model: Model to be calibrated.
+        forward_loop: A callable which takes the model as argument and
+            forwards calibration data through the model.
+        distributed_sync: Whether to sync amax across distributed processes.
+        num_steps: Number of amax candidates to try (default: 10).
+        start_multiplier: Starting multiplier for amax search (default: 0.25).
+        stop_multiplier: Ending multiplier for amax search (default: 4.0).
+
+    See :class:`MseCalibConfig <modelopt.torch.quantization.config.MseCalibConfig>` for
+    details on the remaining arguments.
+    """
+    # Step 1: First get initial amax using max calibration
+    max_calibrate(model, forward_loop, distributed_sync)
+
+    # Step 2: Replace calibrators with MseCalibrator for enabled quantizers
+    for name, module in model.named_modules():
+        if isinstance(module, TensorQuantizer) and not module._disabled:
+            # Static block quantization is not supported by MseCalibrator
+            if module.is_static_block_quant:
+                raise ValueError(
+                    f"MSE calibration does not support static block quantization. "
+                    f"Found static block quantization at {name}."
+                )
+            if module._calibrator is not None and not module._dynamic and hasattr(module, "_amax"):
+                # Get the initial amax from max calibration
+                initial_amax = module._amax.clone().detach()
+
+                def quant_func(x, amax, quantizer=module):
+                    original_amax = quantizer._amax.clone() if hasattr(quantizer, "_amax") else None
+                    quantizer._amax = amax
+
+                    with (
+                        enable_quant(quantizer),
+                        disable_calib(quantizer),
+                        enable_fake_quant(quantizer),
+                    ):
+                        xq = quantizer(x)
+
+                    if original_amax is not None:
+                        quantizer._amax = original_amax
+                    else:
+                        delattr(quantizer, "_amax")
+
+                    return xq
+
+                # Create MSE calibrator with quant_func
+                module._calibrator = MseCalibrator(
+                    amax=initial_amax,
+                    axis=module._calibrator._axis,
+                    num_steps=num_steps,
+                    start_multiplier=start_multiplier,
+                    stop_multiplier=stop_multiplier,
+                    quant_func=quant_func,
+                )
+
+    # Step 3: Collect data with MSE calibrators
+    enable_stats_collection(model)
+    if forward_loop is None:
+        weight_only_quantize(model)
+    else:
+        forward_loop(model)
+
+    # Step 4: Compute optimal amax and load it
+    finish_stats_collection(model, method="mse")
+
+    # TODO: Sync amax across distributed processes
+
+
 def enable_stats_collection(model: nn.Module):
     """Enable stats collection for all quantizers in the model."""
     for name, module in model.named_modules():
@@ -194,19 +282,27 @@ def enable_stats_collection(model: nn.Module):
 
 def finish_stats_collection(model: nn.Module, method: str | None = None):
     """Finish stats collection for all quantizers in the model."""
-    for name, module in model.named_modules():
-        if isinstance(module, TensorQuantizer) and not module._disabled:
-            if module._calibrator is not None and not module._dynamic:
-                if method in ["mse", "entropy"]:
-                    if module._calibrator.compute_amax(method) is not None:
-                        module.load_calib_amax(method)
-                elif module._calibrator.compute_amax() is not None:
-                    module.load_calib_amax()
-            if module.bias_calibrator is not None and module.bias_type == "static":
-                module.load_calib_bias()
+    for _, module in model.named_modules():
+        if not isinstance(module, TensorQuantizer) or module._disabled:
+            continue
 
-            module.enable_quant()
-            module.disable_calib()
+        cal = getattr(module, "_calibrator", None)
+        if cal and not getattr(module, "_dynamic", False):
+            if method in {"mse", "entropy"}:
+                if cal.compute_amax(method) is not None:
+                    if method == "entropy":
+                        module.load_calib_amax("entropy")
+                    else:
+                        module.load_calib_amax()
+            elif cal.compute_amax() is not None:
+                # Max calibrator
+                module.load_calib_amax()
+
+        if module.bias_calibrator is not None and module.bias_type == "static":
+            module.load_calib_bias()
+
+        module.enable_quant()
+        module.disable_calib()
 
 
 @torch.no_grad()
@@ -251,7 +347,9 @@ _ENABLE_FOLDING_PQS_TO_WEIGHTS = True
 def _apply_weight_pre_quant_scale(linear, pre_quant_scale):
     if _ENABLE_FOLDING_PQS_TO_WEIGHTS:
         linear.weight.data.copy_(
-            (linear.weight * pre_quant_scale.squeeze()[None, :]).to(linear.weight.dtype)
+            (linear.weight * pre_quant_scale.to(linear.weight.device).squeeze()[None, :]).to(
+                linear.weight.dtype
+            )
         )
     else:
         linear.weight_quantizer._enable_pre_quant_scale = True
@@ -300,7 +398,9 @@ def apply_pre_quant_scale_and_smooth(
         _amax_for_smoothing = linear.input_quantizer._amax_for_smoothing.to(
             device=device, dtype=dtype
         )
-        linear.input_quantizer.amax = (_amax_for_smoothing * pre_quant_scale).amax().to(dtype)
+        linear.input_quantizer.amax = (
+            (_amax_for_smoothing * pre_quant_scale.to(device)).amax().to(dtype)
+        )
 
         if is_quantized_column_parallel_linear(linear) or is_quantized_row_parallel_linear(linear):
             linear.input_quantizer.sync_amax_across_distributed_group(
@@ -507,7 +607,10 @@ def awq_lite(
 
     def get_scale(x_max, w_max, alpha, tensor_parallel_group=None):
         scales = (
-            (x_max.pow(alpha) / (w_max.pow(1 - alpha) + torch.finfo(torch.float32).tiny))
+            (
+                x_max.pow(alpha)
+                / (w_max.to(x_max.device).pow(1 - alpha) + torch.finfo(torch.float32).tiny)
+            )
             .clamp(min=1e-4, max=1e4)
             .view(-1)
         )
@@ -521,7 +624,7 @@ def awq_lite(
         out_actual = out_actual[0] if isinstance(out_actual, tuple) else out_actual
         out = out[0] if isinstance(out, tuple) else out
         loss = (out - out_actual).float().pow(2).mean()
-        self.awq_lite.loss[alpha] += loss
+        self.awq_lite.loss[alpha] += loss.to(self.awq_lite.loss[alpha].device)
 
     def update_best_params(self):
         if not self.awq_lite.is_enabled:

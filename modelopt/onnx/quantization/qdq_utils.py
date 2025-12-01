@@ -38,7 +38,6 @@ from modelopt.onnx.quantization.quant_utils import (
     get_num_bits,
     get_weights_scaling_factor,
     get_weights_scaling_factor_2,
-    pack_weights_to_int4,
     quantize,
 )
 from modelopt.onnx.utils import get_attribute, has_attribute
@@ -872,22 +871,32 @@ def remove_input_dq_and_output_q(
                 )
 
                 # Only remove DQs from the inputs of custom ops
-                if consumers[0].op_type not in quantizable_custom_ops:
+                has_cast = consumers[0].op_type == "Cast"
+                consumers_2 = tensor_consumers[consumers[0].output[0]] if has_cast else consumers
+                if consumers_2[0].op_type not in quantizable_custom_ops:
                     continue
 
-                # Rewire graph to connect Q with the node after DQ (skip DQ)
-                for consumer in consumers:
-                    for cons_idx, cons_inp in enumerate(consumer.input):
-                        if cons_inp == node.output[0]:
-                            # If the input tensor is meant to be quantized, delete DQ. Otherwise, delete both Q/DQ.
-                            if cons_idx in quantizable_custom_ops[consumer.op_type]["inp"]:
-                                consumer.input[cons_idx] = q_node.output[0]
-                            else:
-                                q_node_prev = tensor_producers.get(q_node.input[0], None)
-                                consumer.input[cons_idx] = (
-                                    q_node_prev.output[0] if q_node_prev else q_node.input[0]
-                                )
-                            break
+                if has_cast:
+                    # Assume that this input tensor is not meant to be quantized as there's a Cast node between DQ
+                    # and the custom op. Keep the Cast node and delete both Q/DQ nodes.
+                    q_node_prev = tensor_producers.get(q_node.input[0], None)
+                    consumers[0].input[0] = (
+                        q_node_prev.output[0] if q_node_prev else q_node.input[0]
+                    )
+                else:
+                    # Rewire graph to connect Q with the node after DQ (skip DQ)
+                    for consumer in consumers:
+                        for cons_idx, cons_inp in enumerate(consumer.input):
+                            if cons_inp == node.output[0]:
+                                # If the input tensor is meant to be quantized, delete DQ. Otherwise, delete both Q/DQ.
+                                if cons_idx in quantizable_custom_ops[consumer.op_type]["inp"]:
+                                    consumer.input[cons_idx] = q_node.output[0]
+                                else:
+                                    q_node_prev = tensor_producers.get(q_node.input[0], None)
+                                    consumer.input[cons_idx] = (
+                                        q_node_prev.output[0] if q_node_prev else q_node.input[0]
+                                    )
+                                break
 
                 # Track DequantizeLinear node indices for cleanup
                 dq_indices.append(node_idx)
@@ -943,6 +952,11 @@ def remove_input_dq_and_output_q(
         f"Removed {len(q_indices)} Q node{'' if len(q_indices) == 1 else 's'} and"
         f" {len(dq_indices)} DQ node{'' if len(dq_indices) == 1 else 's'}"
     )
+
+    # Cleanup graph to remove any dangling Q/DQ nodes
+    graph = gs.import_onnx(onnx_model)
+    graph.cleanup()
+    onnx_model = gs.export_onnx(graph)
 
     # TODO: remove manual ir_version change once ORT supports ir_version 11
     onnx_model.ir_version = 10
@@ -1022,9 +1036,25 @@ def remove_graph_input_q(onnx_model: onnx.ModelProto) -> onnx.ModelProto:
     return onnx_model
 
 
-def _cast_initializer_to_dtype(
+def replace_zero_scale_with_smallest_nonzero(onnx_model: onnx.ModelProto) -> onnx.ModelProto:
+    """Replace zero scale values with smallest nonzero fp16 value in the ONNX model."""
+    graph = onnx_model.graph
+    fp16_smallest_nonzero = np.float16(6e-08)
+    scale_nodes = [node.input[1] for node in graph.node if node.op_type == "QuantizeLinear"]
+    for node in graph.node:
+        if node.op_type == "Constant" and node.output[0] in scale_nodes:
+            for attr in node.attribute:
+                if attr.name == "value":
+                    tensor = numpy_helper.to_array(attr.t)
+                    new_tensor = np.where(tensor == 0, fp16_smallest_nonzero, tensor)
+                    attr.t.CopyFrom(numpy_helper.from_array(new_tensor, attr.t.name))
+    return onnx_model
+
+
+def cast_initializer_to_dtype(
     node: onnx.NodeProto, dtype: str, initializer_map: dict[str, onnx.TensorProto]
 ):
+    """Casts the initializer to the given dtype."""
     for id, input_name in enumerate(node.input):
         if input_name in initializer_map:
             input_id = id
@@ -1034,180 +1064,6 @@ def _cast_initializer_to_dtype(
     input_onnx = onnx.numpy_helper.from_array(input, input_name)
     input_onnx.data_type = onnx_dtype_map[dtype]
     initializer_map[input_name].CopyFrom(input_onnx)
-
-
-def quantize_weights_to_int4(
-    onnx_model: onnx.ModelProto,
-) -> onnx.ModelProto:
-    """Converts ONNX model weights from higher precision to INT4 precision with graph optimization.
-
-    This function performs a comprehensive transformation of quantized weights in an ONNX model:
-    1. Identifies DequantizeLinear nodes that represent quantized weights
-    2. Extracts and processes weights and their corresponding scales
-    3. Simplifies the graph by removing unnecessary Reshape/Transpose operations
-    4. Converts weights to INT4 precision while maintaining numerical accuracy
-    5. Updates Cast operations to use float16 instead of float32
-
-    The transformation optimizes the typical pattern:
-    DequantizeLinear -> Reshape -> Transpose -> MatMul/Gemm
-    Into the simplified pattern:
-    DequantizeLinear -> MatMul/Gemm
-
-    Args:
-        onnx_model (onnx.ModelProto): Input ONNX model containing quantized weights.
-
-    Returns:
-        onnx.ModelProto: Weights converted to INT4 precision
-    """
-    graph = onnx_model.graph
-    initializer_map = {initializer.name: initializer for initializer in graph.initializer}
-    value_info_map = {value_info.name: value_info for value_info in graph.value_info}
-    weight_dq_nodes = [node for node in graph.node if node.op_type == "DequantizeLinear"]
-    tensor_producer_map = get_tensor_producer_nodes(graph)
-
-    nodes_to_remove = []
-    for node in weight_dq_nodes:
-        weight_name = node.input[0]
-        scale_name = node.input[1]
-        logger.debug(f"Processing INT4 conversion for weight {weight_name}")
-        weight = numpy_helper.to_array(initializer_map[weight_name])
-        if scale_name in initializer_map:
-            scale = numpy_helper.to_array(initializer_map[scale_name])
-        else:
-            scale_constant_node = tensor_producer_map[scale_name]
-            for attr in scale_constant_node.attribute:
-                if attr.name == "value":
-                    tensor = attr.t
-                    scale = numpy_helper.to_array(tensor)
-
-        weight = weight / scale
-        block_size = weight.shape[-1]
-
-        ## Convert DequantizeLinear -> Reshape -> Transpose -> MatMul/Gemm to DequantizeLinear -> Matmul/Gemm
-        dq_child_nodes = [n for n in graph.node if node.output[0] in n.input]
-        reshape_node = dq_child_nodes[0]
-        nodes_to_remove.append(reshape_node.name)
-        assert reshape_node.op_type == "Reshape", f"Expected Reshape node for {node.name}"
-        reshape_node_output = reshape_node.output[0]
-
-        # Remove constant node from reshape node
-        shape_constant_name = next(input for input in reshape_node.input if "Constant" in input)
-        nodes_to_remove.append(tensor_producer_map[shape_constant_name].name)
-
-        # Get the shape of the output of the reshape node
-        reshape_output_value_info = value_info_map.get(reshape_node_output)
-        if reshape_output_value_info is not None:
-            weight_shape = [
-                dim.dim_value for dim in reshape_output_value_info.type.tensor_type.shape.dim
-            ]
-        else:
-            raise ValueError(f"Unable to determine shape of weight tensor {weight_name}")
-
-        # Reshape weights and scales
-        weight = weight.reshape(weight_shape)
-        assert weight_shape[-1] % block_size == 0, (
-            f"Block size {block_size} is not divisible by {weight_shape[-1]}"
-        )
-        scale_shape = [*weight_shape[:-1], weight_shape[-1] // block_size]
-        scale = scale.reshape(scale_shape)
-        reshape_child_nodes = [n for n in graph.node if reshape_node.output[0] in n.input]
-        assert len(reshape_child_nodes) == 1, f"Expected exactly one child node for {node.name}"
-
-        # Check if there's an optional Cast node between Reshape and Transpose/MatMul/Gemm
-        next_node = reshape_child_nodes[0]
-        if next_node.op_type == "Cast":
-            # Remove unnecessary Cast node
-            cast_node = next_node
-            nodes_to_remove.append(cast_node.name)
-            cast_child_nodes = [n for n in graph.node if cast_node.output[0] in n.input]
-            next_node = cast_child_nodes[0]
-
-        # Transpose weights and scales if present
-        if next_node.op_type == "Transpose":
-            transpose_node = next_node
-            nodes_to_remove.append(transpose_node.name)
-            assert transpose_node.op_type == "Transpose", f"Expected Transpose node for {node.name}"
-            perm = None
-            for attr in transpose_node.attribute:
-                if attr.name == "perm":
-                    perm = [x for x in attr.ints]  # noqa: C416
-            assert perm is not None, f"Permutation not found for {node.name}"
-            weight = weight.transpose(perm)
-            scale = scale.transpose(perm)
-            transpose_child_nodes = [n for n in graph.node if transpose_node.output[0] in n.input]
-            # transpose_node.input = []
-            assert len(transpose_child_nodes) == 1, (
-                f"Expected exactly one matmul node for {node.name}"
-            )
-            matmul_node = transpose_child_nodes[0]
-        else:
-            matmul_node = next_node
-        assert matmul_node.op_type in ["MatMul", "Gemm"], (
-            f"Expected MatMul or Gemm node for {node.name}"
-        )
-        matmul_node.input[1] = node.output[0]
-
-        if scale_name not in initializer_map:
-            # Remove scale producer if it's a Constant node
-            scale_name = node.input[1]
-            scale_producer = tensor_producer_map[scale_name]
-            if scale_producer.op_type == "Constant":
-                graph.node.remove(scale_producer)
-
-            # Create a new scale tensor
-            scale_name = scale_name.replace("Constant_output_0", "scale")
-            scale_tensor = onnx.numpy_helper.from_array(scale, scale_name)
-            graph.initializer.append(scale_tensor)
-            node.input[1] = scale_name
-        else:
-            scale_tensor = onnx.numpy_helper.from_array(scale, scale_name)
-            initializer_map[scale_name].CopyFrom(scale_tensor)
-
-        # Convert weights to INT4 precision
-        weight_shape = weight.shape
-        weights_int4_np = pack_weights_to_int4(weight)
-        weights_int4_onnx = onnx.numpy_helper.from_array(weights_int4_np, weight_name)
-        weights_int4_onnx.data_type = onnx.TensorProto.INT4
-        weights_int4_onnx.dims[0] = weight_shape[0]
-        initializer_map[weight_name].CopyFrom(weights_int4_onnx)
-        logger.debug(f"Converted {weight_name} to INT4 precision")
-
-    def is_pre_quant_scale_node(node: onnx.NodeProto) -> bool:
-        has_pqs_input = any(input for input in node.input if "_pre_quant_scale" in input)
-        return node.op_type == "Mul" and has_pqs_input
-
-    # Remove unnecessay Cast after Pre-quant scale
-    for node in graph.node:
-        if is_pre_quant_scale_node(node):
-            pqs_child_nodes = [n for n in graph.node if node.output[0] in n.input]
-            assert len(pqs_child_nodes) == 1, f"Expected exactly one child node for {node.name}"
-            cast_node = pqs_child_nodes[0]
-            assert cast_node.op_type == "Cast", f"Expected Cast node for {node.name}"
-            node.output.clear()
-            node.output.extend(cast_node.output)
-            nodes_to_remove.append(cast_node.name)
-
-    # Remove transpose and reshape nodes
-    new_nodes = [node for node in graph.node if node.name not in nodes_to_remove]
-    del graph.node[:]
-    graph.node.extend(new_nodes)
-
-    # Cast bias to float16
-    for node in graph.node:
-        if node.op_type == "Add" and "proj/Add" in node.name:
-            _cast_initializer_to_dtype(node, "Half", initializer_map)
-
-    # Cast pre quant scales of o_proj and down_proj to float16
-    for node in graph.node:
-        if node.op_type == "Mul" and (
-            any(
-                x in node.name
-                for x in ("o_proj/input_quantizer/Mul", "down_proj/input_quantizer/Mul")
-            )
-        ):
-            _cast_initializer_to_dtype(node, "Half", initializer_map)
-
-    return onnx_model
 
 
 def quantize_weights_to_mxfp8(

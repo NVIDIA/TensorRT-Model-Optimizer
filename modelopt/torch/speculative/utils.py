@@ -290,11 +290,13 @@ class AcceptanceRateValidation:
 
         return input_ids
 
-    def check_data_consistency_across_ranks(self, data, group=None, fail_when_mismatch=True):
+    def check_data_consistency_across_ranks(self, data, group=None, fail_when_mismatch=False):
         """This function checks the data consistency across all ranks in the group.
 
         Use rank 0 data as the golden set to broadcast to all ranks.
-        Each rank will then compare to this data and through error if different.
+        Each rank compares its data against this golden set and either raises
+        (when fail_when_mismatch=True) or emits a warning while forcing every
+        rank to adopt rank 0's data.
         """
         if not torch.distributed.is_initialized():
             return data
@@ -346,16 +348,12 @@ class AcceptanceRateValidation:
 
             if tree_paths:
                 input_id, draft_tokens, pred_tokens = self.model.tree_decode(input_ids, tree=tree)
-                pred_tokens = self.check_data_consistency_across_ranks(
-                    pred_tokens, fail_when_mismatch=False
-                )
+                pred_tokens = self.check_data_consistency_across_ranks(pred_tokens)
             else:
                 input_id, draft_tokens = self.model.pseudo_speculative_generate(
                     input_ids, steps=steps
                 )
-                draft_tokens = self.check_data_consistency_across_ranks(
-                    draft_tokens, fail_when_mismatch=False
-                )
+                draft_tokens = self.check_data_consistency_across_ranks(draft_tokens)
 
             input_id = self.check_data_consistency_across_ranks(input_id)
             input_ids = torch.cat((input_ids, input_id), dim=-1)

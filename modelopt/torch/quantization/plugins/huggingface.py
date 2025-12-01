@@ -35,7 +35,7 @@ from transformers.models.t5.modeling_t5 import T5Attention
 from modelopt.torch.opt.dynamic import DynamicModule
 from modelopt.torch.utils.distributed import ParallelState
 
-from ..algorithms import AutoQuantizeSearcher
+from ..algorithms import AutoQuantizeGradientSearcher
 from ..conversion import register
 from ..nn import QuantInputBase, QuantModule, QuantModuleRegistry, TensorQuantizer
 from ..nn.modules.quant_linear import _QuantLinear
@@ -739,8 +739,16 @@ def setup_model_for_gradient_checkpointing(model: nn.Module):
         model.config.use_cache = use_cache
 
 
-AutoQuantizeSearcher.register_gradient_checkpointing_enable_context(
-    _is_supported_hf_model, setup_model_for_gradient_checkpointing
+def _is_param_grad_enabled_for_auto_quantize(pname, model):
+    # Enable grad for embedding layers to propagate gradients through the model,
+    # allowing each layer to compute its input gradients during the backward pass.
+    return "embed" in pname
+
+
+AutoQuantizeGradientSearcher.register_custom_support(
+    _is_supported_hf_model,
+    setup_model_for_gradient_checkpointing,
+    _is_param_grad_enabled_for_auto_quantize,
 )
 
 CUSTOM_MODEL_PLUGINS.update(

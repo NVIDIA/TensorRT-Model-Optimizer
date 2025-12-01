@@ -41,6 +41,7 @@ from typing import Any
 import onnx
 import onnx.onnx_cpp2py_export.checker as C
 import onnx_graphsurgeon as gs
+import onnxslim
 
 from modelopt.onnx.logging_config import configure_logging, logger
 from modelopt.onnx.op_types import is_data_dependent_shape_op
@@ -133,16 +134,8 @@ def _preprocess_onnx(
     if simplify:
         logger.info("Attempting to simplify model")
         try:
-            import onnxsim
-        except ModuleNotFoundError as e:
-            logger.warning(
-                "onnxsim is not installed. Please install it with 'pip install onnxsim'."
-            )
-            raise e
-
-        try:
-            model_simp, check = onnxsim.simplify(onnx_model)
-            if check:
+            model_simp = onnxslim.slim(onnx_model, skip_fusion_patterns=["FusionGemm"])
+            if model_simp:
                 onnx_model = model_simp
                 onnx_path = os.path.join(output_dir, f"{model_name}_simp.onnx")
                 save_onnx(onnx_model, onnx_path, use_external_data_format)
@@ -430,16 +423,6 @@ def quantize(
     )
     trt_plugins = update_trt_ep_support(calibration_eps, has_dds_op, has_custom_op, trt_plugins)  # type: ignore[arg-type]
 
-    # Update list with op types to exclude from FP16/BF16 conversion
-    op_types_to_exclude_fp16 = list(
-        dict.fromkeys((op_types_to_exclude_fp16 or []) + list(custom_ops_to_cast_fp32.keys()))
-    )
-    if high_precision_dtype == "fp32" and op_types_to_exclude_fp16:
-        logger.warning(
-            "Nodes were detected for exclusion from FP16/BF16 conversion, but 'high_precision_dtype' is set to FP32. "
-            "Since the model won't be converted to a lower precision, this flag is void."
-        )
-
     # Use random scales if calibration data is not supplied
     if calibration_data is None:
         calibration_data_reader = RandomDataProvider(onnx_path, calibration_shapes)
@@ -485,6 +468,7 @@ def quantize(
             op_types_to_quantize=op_types_to_quantize,
             op_types_to_exclude=op_types_to_exclude,
             op_types_to_exclude_fp16=op_types_to_exclude_fp16,
+            custom_ops_to_cast_fp32=custom_ops_to_cast_fp32,
             nodes_to_quantize=nodes_to_quantize,
             nodes_to_exclude=nodes_to_exclude,
             use_external_data_format=use_external_data_format,

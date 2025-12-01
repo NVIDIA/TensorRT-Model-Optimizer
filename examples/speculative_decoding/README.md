@@ -129,7 +129,7 @@ Once we finish dumping hidden states, launch offline training with an extra `--o
 For online training checkpoints, we can run in-framework evaluation on MT-bench:
 
 ```bash
-python ar_validate.py --model_path $ONLINE_CKPT
+python scripts/ar_validate.py --model_path $ONLINE_CKPT
 ```
 
 **Note**: In-framework evaluation is supported only for online training. For offline training checkpoints, please export the model and evaluate it using serving frameworks.
@@ -137,7 +137,7 @@ python ar_validate.py --model_path $ONLINE_CKPT
 ## Export
 
 ```bash
-python export_hf_checkpoint.py --model_path $OUTPUT_DIR --export_path $EXPORT_PATH
+python scripts/export_hf_checkpoint.py --model_path $OUTPUT_DIR --export_path $EXPORT_PATH
 ```
 
 This exports the model from a ModelOpt checkpoint to a deployment-compatible format.
@@ -174,6 +174,16 @@ kv_cache_config:
 ```
 
 Please refer to [TRT-LLM Doc: Speculative Decoding](https://nvidia.github.io/TensorRT-LLM/examples/llm_speculative_decoding.html) for detailed usage.
+
+### vLLM
+
+Please refer to [VLLM Doc: Speculative Decoding](https://docs.vllm.ai/en/latest/features/spec_decode/) for detailed usage.
+
+Optionally, you can convert the exported checkpoint to contain target model information, which is accepted by vLLM to simplify depployment:
+
+```bash
+python scripts/convert_to_vllm_ckpt.py --input <exported_ckpt> --verifier <target_model> --output <output_dir>
+```
 
 ### SGLang
 
@@ -227,7 +237,7 @@ Note: Add `--quantization=modelopt` flag for quantized models.
 Then, we generate conversations with the base model using prompts from Daring-Anteater:
 
 ```bash
-python server_generate.py --data_path input_conversations/daring-anteater.jsonl --output_path synthetic/train.jsonl
+python scripts/server_generate.py --data_path input_conversations/daring-anteater.jsonl --output_path synthetic/train.jsonl
 ```
 
 To add a system prompt, use the `--system_prompt <system_prompt_text>` argument.
@@ -239,7 +249,7 @@ For large scale data generation, please see [SLURM prepare data](SLURM_prepare_d
 We can optionally use smaller vocab size for the draft model for faster training and inference. E.g. Llama3.2-1B has a vocab size of 128256. In this example, we construct a draft vocab mapping of size 32k by finding the most commonly appeared vocabs in our training set:
 
 ```bash
-python calibrate_draft_vocab.py --model meta-llama/Llama-3.2-1B-Instruct --data input_conversations/daring-anteater.jsonl --draft_vocab_size 32000 --save_dir draft_vocab_cache
+python scripts/calibrate_draft_vocab.py --model meta-llama/Llama-3.2-1B-Instruct --data input_conversations/daring-anteater.jsonl --draft_vocab_size 32000 --save_dir draft_vocab_cache
 ```
 
 This will produce a `d2t.pt` file in `save_dir`, which is the mapping from draft token to target token. During inference, draft tokens can be mapped back to target tokens by `target_token = draft_token + d2t[draft_token]`.

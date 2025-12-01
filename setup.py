@@ -51,8 +51,8 @@ optional_deps = {
         "onnxruntime~=1.22.0 ; platform_machine == 'aarch64' or platform_system == 'Darwin'",
         "onnxruntime-gpu~=1.22.0 ; platform_machine != 'aarch64' and platform_system != 'Darwin' and platform_system != 'Windows'",  # noqa: E501
         "onnxruntime-directml==1.20.0; platform_system == 'Windows'",
-        "onnxscript",  # For test_onnx_dynamo_export unit test
-        "onnxsim ; python_version < '3.12' and platform_machine != 'aarch64'",
+        "onnxscript",  # For autocast opset conversion and test_onnx_dynamo_export unit test
+        "onnxslim>=0.1.76",
         "polygraphy>=0.49.22",
     ],
     "hf": [
