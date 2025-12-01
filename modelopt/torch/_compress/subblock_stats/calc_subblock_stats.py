@@ -43,7 +43,7 @@ from modelopt.torch._compress.decilm.deci_lm_hf_code.block_config import (
     SubblockConfig,
 )
 from modelopt.torch._compress.replacement_library.replacement_utils import parse_layer_replacement
-from modelopt.torch._compress.subblock_stats.calc_subblock_memory import (
+from modelopt.torch._compress.subblock_stats.calc_subblock_params_and_memory import (
     calc_subblock_active_params,
     calculate_non_block_memory,
     calculate_non_block_params,
