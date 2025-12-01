@@ -109,6 +109,7 @@ optional_deps = {
         "lru-dict",
         "typeguard",
         "pandas",
+        "immutabledict",
     ],
 }
 
