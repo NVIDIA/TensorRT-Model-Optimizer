@@ -63,7 +63,6 @@ Validate single_block_replacement_solutions
 (
 export PYTORCH_CUDA_ALLOC_CONF="expandable_segments:True";
 PUZZLE_DIR=".../Llama-3_2-1B-Instruct/parallel_puzzle";
-PUZZLE_DIR=".../Llama-4-Scout-17B-16E-Instruct/attention_pruning";
 
 torchrun --nproc-per-node=8  \
   -m  modelopt.torch._compress.tools.validate_puzzle_with_multi_replacements  \
