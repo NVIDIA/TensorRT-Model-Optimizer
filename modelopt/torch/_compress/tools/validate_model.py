@@ -16,7 +16,10 @@
 """
 Provides a function to validate a model. Runs a model forward pass on a dataset and calculates
 the loss, and optionally registers hooks to capture the inputs and the outputs
-of pytorch modules that are used for activation scoring for pruning."""
+of pytorch modules that are used for activation scoring for pruning.
+
+TODO: Consider moving this a separate module dedicated for scoring.
+"""
 
 import argparse
 import textwrap
