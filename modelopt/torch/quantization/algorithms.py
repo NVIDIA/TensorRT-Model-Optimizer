@@ -273,12 +273,13 @@ class QuantRecipeHparam(Hparam):
             if parallel_state.expert_model_parallel_group.is_initialized():
                 # TODO: Support expert model parallelism for score estimation
                 warnings.warn("AutoQuantize does not support expert model parallelism yet.")
+            importance = importance.cpu()
             importance = DistributedProcessGroup.get_dist_syncd_obj(
                 importance,
                 [parallel_state.tensor_parallel_group, parallel_state.data_parallel_group],
                 sum,
             )
-            total_score += importance.cpu().item()
+            total_score += importance.item()
         return total_score
 
     def get_cost(self, recipe: QuantRecipe) -> float:
