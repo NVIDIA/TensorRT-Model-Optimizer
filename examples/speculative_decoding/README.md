@@ -246,11 +246,10 @@ For large scale data generation, please see [SLURM prepare data](SLURM_prepare_d
 
 ### Configuring Draft Model
 
-For EAGLE‑1 and EAGLE‑3 we provide a [default model architecture config](https://github.com/NVIDIA/TensorRT-Model-Optimizer/blob/main/modelopt/torch/speculative/config.py#L37) in ModelOpt. You can override default settings by providing an additional JSON dict. E.g. using different number of layers and MLP intermediate size for the draft model:
+For EAGLE‑1 and EAGLE‑3 we provide a [default model architecture config](https://github.com/NVIDIA/TensorRT-Model-Optimizer/blob/main/modelopt/torch/speculative/config.py#L37) in ModelOpt. You can override default settings by providing an additional JSON dict. E.g. using a different MLP intermediate size for the draft model:
 
 ```json
 {
-    "num_hidden_layers": 2,
     "intermediate_size": 28672
 }
 ```
