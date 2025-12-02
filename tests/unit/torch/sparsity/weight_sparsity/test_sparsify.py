@@ -22,7 +22,7 @@ from _test_utils.torch.nas_prune.models import BaseExampleModel, get_example_mod
 import modelopt.torch.opt as mto
 import modelopt.torch.sparsity as mts
 from modelopt.torch.opt.utils import is_dynamic
-from modelopt.torch.sparsity.magnitude import MagnitudeSearcher
+from modelopt.torch.sparsity.weight_sparsity.magnitude import MagnitudeSearcher
 from modelopt.torch.utils.random import _set_deterministic_seed
 
 try:

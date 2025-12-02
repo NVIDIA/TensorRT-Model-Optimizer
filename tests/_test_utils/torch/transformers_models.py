@@ -28,13 +28,12 @@ from transformers import (
     BertForQuestionAnswering,
     LlamaConfig,
     LlamaForCausalLM,
+    Qwen3Config,
+    Qwen3ForCausalLM,
     T5Config,
     T5ForConditionalGeneration,
     T5Tokenizer,
 )
-
-if Version(transformers.__version__) >= Version("4.51"):
-    from transformers import Qwen3Config, Qwen3ForCausalLM
 
 if Version(transformers.__version__) >= Version("4.55"):
     from transformers import GptOssConfig, GptOssForCausalLM
@@ -46,8 +45,6 @@ SEED = 1234
 
 def get_tiny_qwen3(**config_kwargs) -> "Qwen3ForCausalLM":
     set_seed(SEED)
-    if Version(transformers.__version__) < Version("4.51"):
-        pytest.skip("Qwen3ForCausalLM is not supported in transformers < 4.51")
 
     kwargs = {
         "hidden_size": 32,

@@ -13,22 +13,23 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # mypy: ignore-errors
+
 from .core import (
-    Needle,
+    CantResolveNodeDependenciesException,
+    ConstantTarget,
+    ExternalTarget,
+    FunctionTarget,
+    InputsLoopFoundException,
     KnotException,
     LoopFoundException,
-    InputsLoopFoundException,
+    ModuleTarget,
     MultipleExternalNodesException,
+    Needle,
     OnlyInternalNodesException,
     OutputsLoopFoundException,
-    ExternalTarget,
-    ModuleTarget,
-    ConstantTarget,
-    FunctionTarget,
     RemoteTarget,
     StitchedModule,
     StitchedModuleException,
-    CantResolveNodeDependenciesException,
     StitchedModuleOutput,
 )
-from .passage import always_false_predicate, always_true_predicate, InputArgs
+from .passage import InputArgs, always_false_predicate, always_true_predicate

@@ -12,6 +12,12 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+"""Utility functions for validating models and extracting hidden states and similarity metrics.
+
+TODO: Consider moving this a separate module dedicated for scoring.
+"""
+
 # mypy: ignore-errors
 
 import argparse

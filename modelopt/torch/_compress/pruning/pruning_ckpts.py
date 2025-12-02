@@ -12,6 +12,13 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+"""Utilities for creating pruned model checkpoints.
+
+This module provides functions to generate pruned checkpoints by modifying model architectures
+(FFN intermediate sizes, attention head groups, hidden dimensions) and initializing child pruned models
+from parent checkpoints.
+"""
+
 # mypy: ignore-errors
 import json
 import os
@@ -34,10 +41,6 @@ from modelopt.torch._compress.tools.checkpoint_utils import load_model_config
 from modelopt.torch._compress.tools.hydra_utils import register_hydra_resolvers
 from modelopt.torch._compress.tools.logger import mprint
 from modelopt.torch._compress.tools.validate_model import validate_model
-
-
-def launch_score_activations(cfg: DictConfig, runtime):
-    validate_model(args=cfg.pruning, runtime=runtime)
 
 
 def launch_ffn_intermediates_prune_ckpt(

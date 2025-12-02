@@ -12,6 +12,15 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+"""
+Parsing and formatting utilities for configuration handling in model compression.
+
+This module provides utilities for:
+- Parsing command-line arguments and configuration strings
+- Formatting and displaying model configurations (block configs, attention, FFN)
+- Formatting loss metrics for logging and visualization
+"""
 # mypy: ignore-errors
 
 import json

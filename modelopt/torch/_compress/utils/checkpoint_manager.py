@@ -20,8 +20,9 @@ Checkpoint manager for activation hook scoring with periodic saves and resume su
 import json
 import time
 from pathlib import Path
-from typing import Dict, Any, Optional
-from modelopt.torch._compress.tools.logger import mprint, aprint
+from typing import Any, Dict, Optional
+
+from modelopt.torch._compress.tools.logger import aprint, mprint
 
 
 class ScoringCheckpointManager:
@@ -195,7 +196,9 @@ class ScoringCheckpointManager:
             # All ranks save their hook states
             if self.activation_hooks is not None:
                 try:
-                    from utils.activation_hooks.hooks import ActivationsHook
+                    from modelopt.torch._compress.activation_scoring.activation_hooks.hooks import (
+                        ActivationsHook,
+                    )
 
                     saved_path = ActivationsHook.save_hook_states(
                         self.activation_hooks, self.checkpoint_dir, self.runtime
@@ -252,7 +255,9 @@ class ScoringCheckpointManager:
         # All ranks save their final hook states
         if self.activation_hooks is not None:
             try:
-                from utils.activation_hooks.hooks import ActivationsHook
+                from modelopt.torch._compress.activation_scoring.activation_hooks.hooks import (
+                    ActivationsHook,
+                )
 
                 saved_path = ActivationsHook.save_hook_states(
                     self.activation_hooks, self.checkpoint_dir, self.runtime

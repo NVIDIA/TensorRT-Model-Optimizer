@@ -32,7 +32,7 @@ from typing import Iterable, Optional, Type, TypeVar
 import hydra
 import pandas as pd
 import torch
-from frozendict import frozendict
+from immutabledict import immutabledict
 from omegaconf import DictConfig, ListConfig, OmegaConf
 from tqdm import tqdm
 
@@ -43,7 +43,7 @@ from modelopt.torch._compress.decilm.deci_lm_hf_code.block_config import (
     SubblockConfig,
 )
 from modelopt.torch._compress.replacement_library.replacement_utils import parse_layer_replacement
-from modelopt.torch._compress.subblock_stats.calc_subblock_memory import (
+from modelopt.torch._compress.subblock_stats.calc_subblock_params_and_memory import (
     calc_subblock_active_params,
     calculate_non_block_memory,
     calculate_non_block_params,
@@ -61,7 +61,7 @@ T_DataClass = TypeVar("T_DataClass")
 
 """
 Usage:
-python -m v1.calc_subblock_stats PUZZLE_DIR [ --benchmark_iterations 1000 ]
+python -m modelopt.torch._compress.subblock_stats.calc_subblock_stats PUZZLE_DIR [ --benchmark_iterations 1000 ]
 
 --benchmark_iterations=None (the default) means that the code won't use infery to benchmark runtime,
   only memory stats will be calculated. If you want to benchmark runtime, run inside an infery-llm docker.
@@ -73,7 +73,7 @@ def calculate_subblock_stats(
     calc_subblock_stats_config: DictConfig,
     teacher_dir: Path,
     master_puzzle_dir: Path,
-    subblock_configs: list[frozendict[str, AttentionConfig | FFNConfig]],
+    subblock_configs: list[immutabledict[str, AttentionConfig | FFNConfig]],
     batch_size: int,
     prefill_seq_len: int,
     generation_seq_len: int,
@@ -152,14 +152,6 @@ def calculate_subblock_stats(
         parent_layer_indices = subblock_config_indexed["parent_layer_indices"]
 
         if is_calc_runtime:
-            # TODO old code, to be removed
-            # from puzzle_tools.calc_subblock_runtime import get_infery_runners, measure_runtime_ms
-            # prefill_runners, decode_runners = get_infery_runners(subblock_config, batch_size, prefill_seq_len,
-            #                                                      generation_seq_len, n_embd, n_head)
-            # total_runtime_ms, prefill_runtime_ms, decode_runtime_ms = \
-            #     measure_runtime_ms(prefill_runners, decode_runners, batch_size, generation_seq_len,
-            #                        benchmark_iterations, use_cuda_graph)
-
             total_runtime_ms = runtime_by_subblock_dict[subblock_config]
             prefill_runtime_ms = None
             decode_runtime_ms = None
@@ -216,7 +208,7 @@ def calculate_subblock_stats(
     non_block_params = calculate_non_block_params(n_embd, vocab_size)
 
     # TODO
-    # Lior Kadoch: the semantics here is wrong why do we refer, prefill_runtime_ms as embedding_runtime_ms and lm_head_runtime_ms as decode_runtime_ms ?
+    # the semantics here is wrong why do we refer, prefill_runtime_ms as embedding_runtime_ms and lm_head_runtime_ms as decode_runtime_ms ?
     # Prefill is the first the user prompt inference, and Decode refer to the next generation process. both processes use all the model layers.
     subblock_stats["non_block"] = {
         "runtime_ms": non_block_runtime_ms,
@@ -314,7 +306,7 @@ def calculate_subblock_stats_for_puzzle_dir(
         )
         moe_stats_file = None
 
-    subblock_stats_args = {frozendict(x["args"]) for x in subblock_stats}
+    subblock_stats_args = {immutabledict(x["args"]) for x in subblock_stats}
 
     data_types = [
         ("nvfp4", "nvfp4", "nvfp4"),
@@ -359,7 +351,7 @@ def calculate_subblock_stats_for_puzzle_dir(
             moe_stats_file=moe_stats_file,
         )
 
-        if frozendict(curr_subblock_stats["args"]) in subblock_stats_args:
+        if immutabledict(curr_subblock_stats["args"]) in subblock_stats_args:
             raise ValueError(
                 f"Failed merging subblock_stats. The following arguments already existed in the file: {curr_subblock_stats['args']}"
             )
@@ -387,7 +379,7 @@ def _load_subblock_configs(
         # Use FFNConfig defaults (hidden_act will use its default value)
         ffn_config = FFNConfig(intermediate_size=ffn_hidden_size)
         extra_ffn_subblock_configs.append(
-            frozendict({"subblock_config": ffn_config, "parent_layer_indices": tuple([-1])})
+            immutabledict({"subblock_config": ffn_config, "parent_layer_indices": tuple([-1])})
         )  # -1 to indicate that this sublock has no parent layer
     subblock_configs.extend(extra_ffn_subblock_configs)
 
@@ -428,13 +420,13 @@ def _load_subblock_configs_from_replacement_library(
 
         for block_config in layer_replacement["child_block_configs"]:
             block_config: BlockConfig
-            attention_frozen_dict = frozendict(
+            attention_frozen_dict = immutabledict(
                 {
                     "subblock_config": block_config.attention,
                     "parent_layer_indices": tuple(layer_replacement["parent_layer_indices"]),
                 }
             )
-            ffn_frozen_dict = frozendict(
+            ffn_frozen_dict = immutabledict(
                 {
                     "subblock_config": block_config.ffn,
                     "parent_layer_indices": tuple(layer_replacement["parent_layer_indices"]),
@@ -445,7 +437,7 @@ def _load_subblock_configs_from_replacement_library(
 
             if block_config.parallel_blocks is not None:
                 for block_idx, internal_block_config in enumerate(block_config.parallel_blocks):
-                    attention_frozen_dict = frozendict(
+                    attention_frozen_dict = immutabledict(
                         {
                             "subblock_config": internal_block_config.attention,
                             "parent_layer_indices": tuple(
@@ -454,7 +446,7 @@ def _load_subblock_configs_from_replacement_library(
                             "inner_block_idx": block_idx,
                         }
                     )
-                    ffn_frozen_dict = frozendict(
+                    ffn_frozen_dict = immutabledict(
                         {
                             "subblock_config": internal_block_config.ffn,
                             "parent_layer_indices": tuple(

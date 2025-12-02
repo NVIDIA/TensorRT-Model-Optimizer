@@ -12,6 +12,14 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+"""
+Model validation and loss calculation utilities for single-GPU and multi-GPU setups.
+
+Also provides helper functions for loss metrics, KL divergence, JS divergence,
+and similarity losses for knowledge distillation.
+"""
+
 # mypy: ignore-errors
 import functools
 import math
@@ -24,12 +32,13 @@ import torch.distributed
 import torch.nn.functional as F
 import wandb
 from accelerate import Accelerator
-from modelopt.torch._compress.tools import kd_model
 from torch import nn
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 from transformers.generation.logits_process import TopKLogitsWarper, TopPLogitsWarper
 from typing_extensions import Self
+
+from modelopt.torch._compress.tools import kd_model
 from modelopt.torch._compress.utils.data.dataloaders import create_padded_tensor
 
 
@@ -396,14 +405,7 @@ def _DEBUG_calculate_per_token_entropy(batch_outputs, logits, i_batch):
     # calculate the per token entropy and per token top p
     entropy = calc_entropy(logits).cpu()  # .view(-1)#.tolist()
     msftm = confidence_max_softmax(logits).cpu()  # .view(-1)#.tolist()
-    teacher_dir = (
-        "/lustre/fsw/portfolios/coreai/projects/coreai_nvfm_llm/models/"
-        "meta-llama/Meta-Llama-3.1-70B-Instruct-new_rope/"
-    )
-    # teacher_dir = (
-    #     '/lustre/fsw/portfolios/coreai/projects/coreai_nvfm_llm/models/'
-    #     'meta-llama/Meta-Llama-3.1-405B-Instruct/'
-    # )
+    teacher_dir = ".../meta-llama/Meta-Llama-3.1-70B-Instruct-new_rope/"
     file_path = f"{teacher_dir}/validation/per_token_stats_{i_batch}.pth"
     os.makedirs(os.path.dirname(file_path), exist_ok=True)
     torch.save({"entropy": entropy, "max_softmax": msftm}, file_path)

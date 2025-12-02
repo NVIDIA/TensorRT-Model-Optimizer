@@ -12,9 +12,11 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+"""
+Replacement library for efficiently loading and managing layer-replaced DeciLM models.
+- Uses replacement_utils for parsing, sorting, and analyzing layer replacement configurations
+"""
 # mypy: ignore-errors
-
-"""Replacement library for DeciLM models"""
 
 import json
 import re
@@ -23,7 +25,7 @@ from typing import Optional
 
 import numpy as np
 import torch
-from frozendict import frozendict
+from immutabledict import immutabledict
 from lru import LRU
 from safetensors.torch import load_file as safe_load_file
 from torch import nn
@@ -66,7 +68,7 @@ class ReplacementLibrary:
         self.replacement_library = self._load_replacement_library(replacement_library_path)
         self._ensure_all_checkpoints_are_split()
         self.model_config_overrides = (
-            frozendict(model_config_overrides) if (model_config_overrides is not None) else None
+            immutabledict(model_config_overrides) if (model_config_overrides is not None) else None
         )
 
         self._loaded_replacements: dict[str, nn.ModuleList] = LRU(

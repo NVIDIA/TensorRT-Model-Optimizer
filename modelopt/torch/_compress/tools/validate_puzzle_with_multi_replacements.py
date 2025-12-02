@@ -12,6 +12,12 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+"""Validates puzzle solutions by applying layer replacements and evaluating model performance.
+
+TODO: Consider moving this a separate module dedicated for scoring.
+"""
+
 # mypy: ignore-errors
 
 import argparse
@@ -56,17 +62,15 @@ Validate single_block_replacement_solutions
 
 (
 export PYTORCH_CUDA_ALLOC_CONF="expandable_segments:True";
-PUZZLE_DIR="/lustre/fsw/portfolios/coreai/projects/coreai_nvfm_llm/puzzle/Llama-3_2-1B-Instruct/parallel_puzzle";
-PUZZLE_DIR="/lustre/fsw/portfolios/coreai/projects/coreai_nvfm_llm/puzzle/Llama-4-Scout-17B-16E-Instruct/attention_pruning";
+PUZZLE_DIR=".../Llama-3_2-1B-Instruct/parallel_puzzle";
 
-torchrun --rdzv-backend=static  --master-addr 127.0.0.1  --master-port  8754  \
-  --nproc-per-node=$(python -c 'import torch; print(torch.cuda.device_count())')  \
-  -m  puzzle.validate_puzzle_with_multi_replacements  \
+torchrun --nproc-per-node=8  \
+  -m  modelopt.torch._compress.tools.validate_puzzle_with_multi_replacements  \
   --replacement_library_path  ${PUZZLE_DIR}/replacement_library.json  \
   --solutions_path  ${PUZZLE_DIR}/single_sequence_replacement_solutions.json  \
   --solutions_to_validate  0  \
   \
-  --dataset_path /lustre/fsw/portfolios/coreai/projects/coreai_nvfm_llm/datasets/diverse_mix/releases/v0.4/valid  \
+  --dataset_path .../v0.4/valid  \
   --data_column  conversation  --block_size 8192  --seed 42  --shuffle_seed 444  --bos_rate 0.5  \
   --eval_samples 32  --micro_batch_size 1  \
   \
