@@ -374,6 +374,12 @@ def test_kimi(command):
             tensor_parallel_size=4,
             mini_sm=89,
         ),
+        *ModelDeployerList(
+            model_id="nvidia/Llama-3_1-Nemotron-Ultra-253B-v1-FP8",
+            backend=("vllm",),
+            tensor_parallel_size=8,
+            mini_sm=89,
+        ),
     ],
     ids=idfn,
 )
@@ -453,6 +459,20 @@ def test_medusa(command):
         *ModelDeployerList(
             base_model="openai/gpt-oss-120b",
             model_id="nvidia/gpt-oss-120b-Eagle3",
+            backend=("trtllm", "sglang"),
+            tensor_parallel_size=8,
+            mini_sm=89,
+        ),
+        *ModelDeployerList(
+            base_model="openai/gpt-oss-120b",
+            model_id="nvidia/gpt-oss-120b-Eagle3-v2",
+            backend=("trtllm", "sglang"),
+            tensor_parallel_size=8,
+            mini_sm=89,
+        ),
+        *ModelDeployerList(
+            base_model="nvidia/Llama-3.3-70B-Instruct-FP8",
+            model_id="nvidia/Llama-3.3-70B-Instruct-Eagle3",
             backend=("trtllm", "sglang"),
             tensor_parallel_size=8,
             mini_sm=89,
