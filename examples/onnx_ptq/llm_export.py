@@ -30,6 +30,7 @@ from packaging.version import Version
 from transformers import AutoConfig, AutoTokenizer
 
 import modelopt
+from modelopt.onnx.export import INT4QuantExporter
 from modelopt.onnx.llm_export_utils.export_utils import (
     ModelLoader,
     WrapperModelForCausalLM,
@@ -37,7 +38,7 @@ from modelopt.onnx.llm_export_utils.export_utils import (
 )
 from modelopt.onnx.llm_export_utils.quantization_utils import quantize
 from modelopt.onnx.llm_export_utils.surgeon_utils import fold_fp8_qdq_to_dq
-from modelopt.onnx.quantization.qdq_utils import fp4qdq_to_2dq, quantize_weights_to_int4
+from modelopt.onnx.quantization.qdq_utils import fp4qdq_to_2dq
 from modelopt.torch.export import export_hf_checkpoint
 from modelopt.torch.quantization.utils import is_quantized_linear
 
@@ -278,7 +279,7 @@ def surgeon_llm(
 
     elif dtype == "int4_awq":
         with time_operation("quantizing weights to int4"):
-            onnx_model = quantize_weights_to_int4(onnx_model)
+            onnx_model = INT4QuantExporter.process_model(onnx_model)
 
     output_onnx_name = f"{output_dir}/model.onnx"
     print(
