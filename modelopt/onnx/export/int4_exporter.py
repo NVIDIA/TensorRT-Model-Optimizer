@@ -35,7 +35,7 @@ class INT4QuantExporter(ONNXQuantExporter):
         graph = onnx_model.graph
         value_info_map = {value_info.name: value_info for value_info in graph.value_info}
         weight_dq_nodes = [node for node in graph.node if node.op_type == "DequantizeLinear"]
-        tensor_producer_map = get_tensor_producer_nodes(graph)
+        tensor_producer_map = get_tensor_producer_nodes(graph, get_initializer_producers=True)
 
         nodes_to_remove = []
         for node in weight_dq_nodes:
@@ -126,7 +126,7 @@ class INT4QuantExporter(ONNXQuantExporter):
         graph = onnx_model.graph
         initializer_map = {initializer.name: initializer for initializer in graph.initializer}
         weight_dq_nodes = [node for node in graph.node if node.op_type == "DequantizeLinear"]
-        tensor_producer_map = get_tensor_producer_nodes(graph)
+        tensor_producer_map = get_tensor_producer_nodes(graph, get_initializer_producers=True)
 
         for node in weight_dq_nodes:
             weight_name = node.input[0]
