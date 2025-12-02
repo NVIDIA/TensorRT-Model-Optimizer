@@ -39,6 +39,7 @@ Example usage:
     import torch
     from transformers import AutoModelForCausalLM, AutoTokenizer
     import modelopt.torch.speculative as mtsp
+    from modelopt.torch.speculative.config import default_eagle_config, eagle3_default_config
 
     # User-defined model
     model = AutoModelForCausalLM.from_pretrained("TinyLlama/TinyLlama-1.1B-Chat-v1.0")
@@ -53,8 +54,9 @@ Example usage:
             }
     elif mode == "eagle":
         config = {
-            "eagle_num_layers": 1
-            }
+            "eagle_architecture_config": eagle3_default_config, 
+            #use default_eagle_config for eagle1
+        }
     mtsp.convert(model, [(mode, config)])
 
 
@@ -72,7 +74,6 @@ After converting to a speculative decoding model, you need to fine-tune the deco
     mto.enable_huggingface_checkpointing()
 
     trainer = Trainer(model=model, processing_class=tokenizer, args=training_args, **data_module)
-    trainer._move_model_to_device(model, trainer.args.device)
 
     trainer.train(resume_from_checkpoint=checkpoint)
     trainer.save_state()

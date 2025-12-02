@@ -47,6 +47,7 @@ from transformers.models.llama.modeling_llama import (
 from transformers.trainer_pt_utils import LabelSmoother
 from transformers.utils import ModelOutput
 
+from ...utils import print_rank_0
 from ..eagle.conversion import EagleDMRegistry
 from ..eagle.eagle_model import EagleModel
 from ..eagle.utils import RMSNorm, expand_mask, make_causal_mask
@@ -429,6 +430,25 @@ class HFEagleModel(EagleModel):
             base_model_last_layer = self._base_model.layers[-1]
             return next(base_model_last_layer.parameters()).device
 
+    def _rewrite_eagle_cfg(self, eagle_arch_cfg):
+        """Overwrite necessary fields in eagle config to match target."""
+        # hidden size, vocab size, max rope must match target
+        eagle_arch_cfg.update(
+            {
+                "hidden_size": self._base_llm_config.hidden_size,
+                "vocab_size": self._base_llm_config.vocab_size,
+                "max_position_embeddings": self._base_llm_config.max_position_embeddings,
+                "draft_vocab_size": eagle_arch_cfg.get(
+                    "draft_vocab_size", self._base_llm_config.vocab_size
+                ),
+            }
+        )
+
+        if "_attn_implementation" not in eagle_arch_cfg:
+            eagle_arch_cfg["_attn_implementation"] = "sdpa"
+
+        return eagle_arch_cfg
+
     def modify(
         self,
         eagle_offline,
@@ -445,6 +465,9 @@ class HFEagleModel(EagleModel):
         Args:
             config: The config for eagle decoder layers.
         """
+        # Overwrite eagle config to match target model
+        eagle_architecture_config = self._rewrite_eagle_cfg(eagle_architecture_config)
+
         super().modify(
             eagle_offline=eagle_offline,
             eagle_hidden_state_distillation=eagle_hidden_state_distillation,
@@ -456,8 +479,7 @@ class HFEagleModel(EagleModel):
             eagle_architecture_config=eagle_architecture_config,
         )
         self.eagle_config = PretrainedConfig.from_dict(eagle_architecture_config)
-        if self.eagle_config._attn_implementation is None:
-            self.eagle_config._attn_implementation = "sdpa"
+
         decoder_cls = (
             type(self.model.layers[-1]) if self.eagle_reuse_base_decoder else LlamaDecoderLayer
         )
@@ -469,13 +491,6 @@ class HFEagleModel(EagleModel):
             and len(self.eagle_config.eagle_aux_hidden_state_layer_ids) == 0
         ):
             self._set_default_aux_hidden_state_layers()
-
-        if self._base_llm_config.hidden_size != self.eagle_config.hidden_size:
-            raise ValueError(
-                "EAGLE module hidden size "
-                f"{self.eagle_config.hidden_size} must match base model hidden size "
-                f"{self._base_llm_config.hidden_size}!"
-            )
 
         self.eagle_module = EagleModule(
             self.eagle_config,
@@ -510,6 +525,16 @@ class HFEagleModel(EagleModel):
 
         self.num_ttt_steps = 4  # NOTE: (hg) hardcoded for now. Might add to config later.
         self._cached_attn_blk_masks = {}
+
+        # load draft vocab cache
+        if self.eagle_config.draft_vocab_size != self.eagle_config.vocab_size:
+            try:
+                self.eagle_module.d2t = torch.load(self.eagle_config.draft_vocab_cache_path)
+                print_rank_0(
+                    f"Loaded draft vocab cache from {self.eagle_config.draft_vocab_cache_path}."
+                )
+            except Exception as e:
+                raise ValueError(f"Failed to load draft vocab cache: {e}")
 
     def _get_ttt_attention_mask(self, seq_length, ttt_step):
         # compile and cached flex attention masks in first call

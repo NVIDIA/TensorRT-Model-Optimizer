@@ -31,6 +31,7 @@
 
 import json
 import os
+from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import Literal
 
@@ -42,6 +43,7 @@ from transformers.trainer_utils import get_last_checkpoint
 
 import modelopt.torch.opt as mto
 import modelopt.torch.speculative as mtsp
+from modelopt.torch.speculative.config import default_eagle_config, eagle3_default_config
 from modelopt.torch.utils import print_rank_0
 
 torch.manual_seed(0)
@@ -70,10 +72,6 @@ class DataArguments:
         },
     )
     lazy_preprocess: bool = True
-    draft_vocab_cache_dir: str = field(
-        default="draft_vocab_cache",
-        metadata={"help": "Path to the d2t cache directory."},
-    )
     vlm_img_dir: str = field(default=None, metadata={"help": "Path to the VLM image directory."})
     vlm_processor: str = field(default=None, metadata={"help": "Path to the VLM processor."})
 
@@ -176,53 +174,23 @@ def train():
             }
             mtsp.convert(model, [("medusa", config)])
         elif training_args.mode in ["eagle1", "eagle3"]:
-            from modelopt.torch.speculative.config import EAGLE1_DEFAULT_CFG, EAGLE3_DEFAULT_CFG
-
             # Load default config
-            config = {
-                "eagle1": EAGLE1_DEFAULT_CFG,
-                "eagle3": EAGLE3_DEFAULT_CFG,
-            }[training_args.mode]["config"]
+            default_eagle_arch_cfg = {
+                "eagle1": deepcopy(default_eagle_config),
+                "eagle3": deepcopy(eagle3_default_config),
+            }[training_args.mode]
 
-            # overwrite config with custom config
-            if use_offline_training:
-                config["eagle_offline"] = True
+            config = {
+                "eagle_offline": use_offline_training,
+                "eagle_architecture_config": default_eagle_arch_cfg,
+            }
 
             if eagle_args.eagle_config:
                 with open(eagle_args.eagle_config) as f:
                     custom_config = json.load(f)
                 config["eagle_architecture_config"].update(custom_config)
 
-            # Hidden size and vocab size must match base model
-            llm_config = (
-                model.config.llm_config if hasattr(model.config, "llm_config") else model.config
-            )
-            config["eagle_architecture_config"].update(
-                {
-                    "hidden_size": llm_config.hidden_size,
-                    "vocab_size": llm_config.vocab_size,
-                    # we also overwrite max_pos_embedding for deployment compatibility
-                    "max_position_embeddings": llm_config.max_position_embeddings,
-                    "draft_vocab_size": custom_config["draft_vocab_size"]
-                    if eagle_args.eagle_config and "draft_vocab_size" in custom_config
-                    else llm_config.vocab_size,
-                }
-            )
-
             mtsp.convert(model, [("eagle", config)])
-
-            # read draft vocab cache
-            if model.eagle_config.draft_vocab_size < model.eagle_config.vocab_size:
-                try:
-                    model_name = os.path.basename(os.path.normpath(model_args.model_name_or_path))
-                    vocab_cache_path = os.path.join(
-                        data_args.draft_vocab_cache_dir, model_name, "d2t.pt"
-                    )
-                    vocab_cache = torch.load(vocab_cache_path)
-                    model.eagle_module.d2t = vocab_cache
-                    print_rank_0(f"Loaded draft vocab cache from {vocab_cache_path}.")
-                except Exception as e:
-                    raise e
         else:
             raise Exception(f"{training_args.mode} is not supported!")
 
