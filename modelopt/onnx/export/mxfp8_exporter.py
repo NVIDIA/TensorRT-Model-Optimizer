@@ -166,24 +166,4 @@ class MXFP8QuantExporter(ONNXQuantExporter):
                         attr.s = b"tanh"
                         logger.debug(f"Updated GELU node {node.name} to use tanh approximation")
 
-        def is_fp32_cast(node: onnx.NodeProto) -> bool:
-            return node.op_type == "Cast" and any(
-                attr.name == "to" and attr.i == onnx.TensorProto.FLOAT for attr in node.attribute
-            )
-
-        # Remove Cast nodes after specific operators
-        nodes_to_remove = []
-        for node in graph.node:
-            if node.op_type in ["Transpose", "Reshape", "Sqrt", "Add", "Gelu"]:
-                child_nodes = [n for n in graph.node if node.output[0] in n.input]
-                if len(child_nodes) == 1 and is_fp32_cast(child_nodes[0]):
-                    cast_node = child_nodes[0]
-                    node.output.clear()
-                    node.output.extend(cast_node.output)
-                    nodes_to_remove.append(cast_node.name)
-
-        # Remove unnecessary casts
-        new_nodes = [node for node in graph.node if node.name not in nodes_to_remove]
-        graph.node.extend(new_nodes)
-
         return onnx_model

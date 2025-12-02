@@ -140,6 +140,7 @@ def infer_types_shapes(model: onnx.ModelProto, all_tensor_info: dict) -> onnx.Mo
             trt.bool: onnx.TensorProto.BOOL,
             trt.fp8: onnx.TensorProto.FLOAT8E4M3FN,
             trt.fp4: onnx.TensorProto.FLOAT4E2M1,
+            trt.e8m0: onnx.TensorProto.UINT8,
         }
         try:
             return trt_to_onnx_dtype_mapping[trt_type]
