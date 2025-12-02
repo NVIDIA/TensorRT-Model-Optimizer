@@ -559,6 +559,7 @@ class TensorQuantizer(nn.Module):
                 axis=self._axis,
                 block_sizes=self._block_sizes,
                 scales=self.amax / 448.0
+                # for blockwise quantization, amax is a scalar and will be recomputed in the kernel
                 if (self.amax is not None and not self._block_sizes)
                 else None,
             )
