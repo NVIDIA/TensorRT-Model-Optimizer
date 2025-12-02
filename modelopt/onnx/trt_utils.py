@@ -321,6 +321,11 @@ def load_onnx_model(
             # Infer types and shapes in the graph for ORT compatibility
             onnx_model = infer_types_shapes_tensorrt(onnx_model, trt_plugins or [], all_tensor_info)
 
+    # Ensure nodes are topologically sorted
+    graph = gs.import_onnx(onnx_model)
+    graph.toposort()
+    onnx_model = gs.export_onnx(graph)
+
     # Enforce IR version = 10
     ir_version_onnx_path = None
     if onnx_model.ir_version > MAX_IR_VERSION:
@@ -335,7 +340,13 @@ def load_onnx_model(
             intermediate_generated_files.append(ir_version_onnx_path)
 
     # Check that the model is valid
-    onnx.checker.check_model(onnx_model)
+    if use_external_data_format:
+        # For large models, use the file path to avoid protobuf size limitation
+        model_path_to_check = ir_version_onnx_path or static_shaped_onnx_path or onnx_path
+        onnx.checker.check_model(model_path_to_check)
+    else:
+        # For smaller models, checking the model object is fine
+        onnx.checker.check_model(onnx_model)
 
     return (
         onnx_model,
@@ -349,7 +360,7 @@ def load_onnx_model(
 def interpret_trt_plugins_precision_flag(
     onnx_model: onnx.ModelProto,
     trt_plugins_precision: list[str],
-    quantize_mode: str,
+    quantize_mode: str = "int8",
 ) -> tuple[dict, dict]:
     """Convert custom ops precision flag to dictionaries with custom op and I/O indices to be cast/quantized.
 
