@@ -19,6 +19,7 @@ from contextlib import nullcontext
 import numpy as np
 import torch
 from onnx_utils.export import (
+    _create_trt_dynamic_shapes,
     generate_dummy_inputs_and_dynamic_axes_and_shapes,
     get_io_shapes,
     remove_nesting,
@@ -234,13 +235,13 @@ def main():
     if args.onnx_load_path == "":
         update_dynamic_axes(args.model, dynamic_axes)
 
-    compilation_args = dynamic_shapes
+    trt_dynamic_shapes = _create_trt_dynamic_shapes(dynamic_shapes)
 
     # We only need to remove the nesting for SDXL models as they contain the nested input added_cond_kwargs
     # which are renamed by the DeviceModel
     ignore_nesting = False
     if args.onnx_load_path != "" and args.model in ["sdxl-1.0", "sdxl-turbo"]:
-        remove_nesting(compilation_args)
+        remove_nesting(trt_dynamic_shapes)
         ignore_nesting = True
 
     # Define deployment configuration
@@ -268,6 +269,7 @@ def main():
     del backbone
     torch.cuda.empty_cache()
 
+    compilation_args = {"dynamic_shapes": trt_dynamic_shapes}
     if not args.trt_engine_load_path:
         # Compile the TRT engine from the exported ONNX model
         compiled_model = client.ir_to_compiled(onnx_bytes, compilation_args)
@@ -289,7 +291,7 @@ def main():
         compiled_model,
         metadata,
         compilation_args,
-        get_io_shapes(args.model, args.onnx_load_path, dynamic_shapes),
+        get_io_shapes(args.model, args.onnx_load_path, trt_dynamic_shapes),
         ignore_nesting,
     )
 

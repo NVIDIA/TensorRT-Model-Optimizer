@@ -368,18 +368,16 @@ def update_dynamic_axes(model_id, dynamic_axes):
         dynamic_axes["out.0"] = dynamic_axes.pop("out_hidden_states")
 
 
-def _create_dynamic_shapes(dynamic_shapes):
+def _create_trt_dynamic_shapes(dynamic_shapes):
     min_shapes = {}
     opt_shapes = {}
     for key, value in dynamic_shapes.items():
         min_shapes[key] = value["min"]
         opt_shapes[key] = value["opt"]
     return {
-        "dynamic_shapes": {
-            "minShapes": min_shapes,
-            "optShapes": opt_shapes,
-            "maxShapes": opt_shapes,
-        }
+        "minShapes": min_shapes,
+        "optShapes": opt_shapes,
+        "maxShapes": opt_shapes,
     }
 
 
@@ -387,19 +385,19 @@ def generate_dummy_inputs_and_dynamic_axes_and_shapes(model_id, backbone):
     """Generate dummy inputs, dynamic axes, and dynamic shapes for the given model."""
     if model_id in ["sdxl-1.0", "sdxl-turbo"]:
         dummy_kwargs, dynamic_shapes = _gen_dummy_inp_and_dyn_shapes_sdxl(
-            backbone, min_bs=1, opt_bs=16
+            backbone, min_bs=2, opt_bs=16
         )
     elif model_id in ["sd3-medium", "sd3.5-medium"]:
         dummy_kwargs, dynamic_shapes = _gen_dummy_inp_and_dyn_shapes_sd3(
-            backbone, min_bs=1, opt_bs=16
+            backbone, min_bs=2, opt_bs=16
         )
     elif model_id in ["flux-dev", "flux-schnell"]:
         dummy_kwargs, dynamic_shapes = _gen_dummy_inp_and_dyn_shapes_flux(
-            backbone, min_bs=1, opt_bs=2
+            backbone, min_bs=1, opt_bs=1
         )
     elif model_id == "ltx-video-dev":
         dummy_kwargs, dynamic_shapes = _gen_dummy_inp_and_dyn_shapes_ltx(
-            backbone, min_bs=1, opt_bs=2
+            backbone, min_bs=2, opt_bs=2
         )
     elif model_id == "wan2.2-t2v-14b":
         dummy_kwargs, dynamic_shapes = _gen_dummy_inp_and_dyn_shapes_wan(
@@ -414,7 +412,7 @@ def generate_dummy_inputs_and_dynamic_axes_and_shapes(model_id, backbone):
     return dummy_kwargs, dynamic_axes, dynamic_shapes
 
 
-def get_io_shapes(model_id, onnx_load_path, dynamic_shapes):
+def get_io_shapes(model_id, onnx_load_path, trt_dynamic_shapes):
     output_name = "out.0"
     if onnx_load_path != "":
         if model_id in ["sdxl-1.0", "sdxl-turbo"]:
@@ -429,28 +427,28 @@ def get_io_shapes(model_id, onnx_load_path, dynamic_shapes):
             raise NotImplementedError(f"Unsupported model_id: {model_id}")
 
     if model_id in ["sdxl-1.0", "sdxl-turbo"]:
-        io_shapes = {output_name: dynamic_shapes["dynamic_shapes"]["minShapes"]["sample"]}
+        io_shapes = {output_name: trt_dynamic_shapes["minShapes"]["sample"]}
     elif model_id in ["sd3-medium", "sd3.5-medium"]:
-        io_shapes = {output_name: dynamic_shapes["dynamic_shapes"]["minShapes"]["hidden_states"]}
+        io_shapes = {output_name: trt_dynamic_shapes["minShapes"]["hidden_states"]}
     elif model_id in ["flux-dev", "flux-schnell"]:
         io_shapes = {}
 
     return io_shapes
 
 
-def remove_nesting(dynamic_shapes):
-    dynamic_shapes["dynamic_shapes"]["minShapes"]["text_embeds"] = dynamic_shapes["dynamic_shapes"][
-        "minShapes"
-    ].pop("added_cond_kwargs.text_embeds")
-    dynamic_shapes["dynamic_shapes"]["minShapes"]["time_ids"] = dynamic_shapes["dynamic_shapes"][
-        "minShapes"
-    ].pop("added_cond_kwargs.time_ids")
-    dynamic_shapes["dynamic_shapes"]["optShapes"]["text_embeds"] = dynamic_shapes["dynamic_shapes"][
-        "optShapes"
-    ].pop("added_cond_kwargs.text_embeds")
-    dynamic_shapes["dynamic_shapes"]["optShapes"]["time_ids"] = dynamic_shapes["dynamic_shapes"][
-        "optShapes"
-    ].pop("added_cond_kwargs.time_ids")
+def remove_nesting(trt_dynamic_shapes):
+    trt_dynamic_shapes["minShapes"]["text_embeds"] = trt_dynamic_shapes["minShapes"].pop(
+        "added_cond_kwargs.text_embeds"
+    )
+    trt_dynamic_shapes["minShapes"]["time_ids"] = trt_dynamic_shapes["minShapes"].pop(
+        "added_cond_kwargs.time_ids"
+    )
+    trt_dynamic_shapes["optShapes"]["text_embeds"] = trt_dynamic_shapes["optShapes"].pop(
+        "added_cond_kwargs.text_embeds"
+    )
+    trt_dynamic_shapes["optShapes"]["time_ids"] = trt_dynamic_shapes["optShapes"].pop(
+        "added_cond_kwargs.time_ids"
+    )
 
 
 def save_onnx(onnx_model, output):
