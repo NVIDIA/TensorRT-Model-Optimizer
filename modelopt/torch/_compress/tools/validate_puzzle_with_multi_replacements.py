@@ -65,8 +65,7 @@ export PYTORCH_CUDA_ALLOC_CONF="expandable_segments:True";
 PUZZLE_DIR=".../Llama-3_2-1B-Instruct/parallel_puzzle";
 PUZZLE_DIR=".../Llama-4-Scout-17B-16E-Instruct/attention_pruning";
 
-torchrun --rdzv-backend=static  --master-addr 127.0.0.1  --master-port  8754  \
-  --nproc-per-node=$(python -c 'import torch; print(torch.cuda.device_count())')  \
+torchrun --nproc-per-node=8  \
   -m  modelopt.torch._compress.tools.validate_puzzle_with_multi_replacements  \
   --replacement_library_path  ${PUZZLE_DIR}/replacement_library.json  \
   --solutions_path  ${PUZZLE_DIR}/single_sequence_replacement_solutions.json  \
