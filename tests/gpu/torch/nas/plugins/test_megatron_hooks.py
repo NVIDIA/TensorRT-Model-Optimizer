@@ -30,8 +30,13 @@ from modelopt.torch.nas.plugins.megatron_hooks import (
 )
 
 
-def test_iterative_channel_contribution_hook():
-    """Test IterativeChannelContributionHook returns correct scores after pruning."""
+def _test_iterative_channel_contribution_hook_with_shape(dim1: int, dim2: int):
+    """Helper function to test IterativeChannelContributionHook with given activation shape.
+
+    Args:
+        dim1: First dimension of activation tensor (before in_features).
+        dim2: Second dimension of activation tensor (before in_features).
+    """
     torch.manual_seed(42)
 
     linear_layer = nn.Linear(in_features=6, out_features=4, bias=False)
@@ -44,7 +49,7 @@ def test_iterative_channel_contribution_hook():
     linear_layer.register_forward_hook(hook)
 
     for _ in range(activation_hooks_kwargs["validation_full_iters"]):
-        activations = torch.randn(2, 3, linear_layer.in_features)
+        activations = torch.randn(dim1, dim2, linear_layer.in_features)
         _ = linear_layer(activations)
 
     results = hook.to_dict()
@@ -55,15 +60,25 @@ def test_iterative_channel_contribution_hook():
     assert results["score"].shape == (6,)
     assert results["channels_importance_ascending"].shape == (6,)
 
-    expected_scores = torch.tensor([5, 2, 4, 1, 3, 0])
+    expected_scores = torch.tensor([5, 1, 3, 2, 4, 0])
     assert torch.equal(results["score"], expected_scores)
 
-    expected_channels_asc = torch.tensor([5, 3, 1, 4, 2, 0])
+    expected_channels_asc = torch.tensor([5, 1, 3, 2, 4, 0])
     assert torch.equal(results["channels_importance_ascending"], expected_channels_asc)
 
     # Test that accumulate() returns the same scores as to_dict()["score"]
     scores_from_accumulate = hook.accumulate()
     assert torch.equal(scores_from_accumulate, expected_scores)
+
+
+def test_iterative_channel_contribution_hook_sbi():
+    """Test IterativeChannelContributionHook returns correct scores for input [seq_len, batch_size, in_features]."""
+    _test_iterative_channel_contribution_hook_with_shape(dim1=32, dim2=8)
+
+
+def test_iterative_channel_contribution_hook_bsi():
+    """Test IterativeChannelContributionHook returns correct scores for input [batch_size, seq_len, in_features]."""
+    _test_iterative_channel_contribution_hook_with_shape(dim1=8, dim2=32)
 
 
 def _test_l2_norm_hook(rank, size):
