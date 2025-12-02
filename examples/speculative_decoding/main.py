@@ -185,6 +185,7 @@ def train():
                 "eagle_architecture_config": default_eagle_arch_cfg,
             }
 
+            # Overwrite default config with custom config
             if eagle_args.eagle_config:
                 with open(eagle_args.eagle_config) as f:
                     custom_config = json.load(f)
