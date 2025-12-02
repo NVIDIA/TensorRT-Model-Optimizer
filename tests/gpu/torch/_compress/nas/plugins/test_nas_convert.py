@@ -20,7 +20,7 @@ from pathlib import Path
 
 import torch
 from _test_utils.torch.distributed.utils import spawn_multiprocess_job
-from experimental.torch._compress.compress_test_utils import setup_test_model_and_data
+from gpu.torch._compress.compress_test_utils import setup_test_model_and_data
 
 import modelopt.torch.nas as mtn
 from modelopt.torch._compress.nas.plugins.compress_nas_plugin import CompressModel
@@ -28,7 +28,7 @@ from modelopt.torch._compress.tools.runtime import NativeDdpRuntime
 
 
 #
-# See tests/experimental/torch/_compress/test_compress.py for instructions on how to run this test
+# See tests/gpu/torch/_compress/test_compress.py for instructions on how to run this test
 # TODO: Remove those instructions once this test runs automatically on CI
 #
 def test_nas_convert_ffn_pruning(project_root_path: Path, tmp_path: Path):
@@ -49,9 +49,7 @@ def _test_nas_convert_ffn_pruning_multiprocess_job(
         puzzle_dir, llama_checkpoint_path, dataset_path = setup_test_model_and_data(
             project_root_path, tmp_path, rank, runtime
         )
-        hydra_config_dir = (
-            project_root_path / "tests/experimental/torch/_compress/resources/configs"
-        )
+        hydra_config_dir = project_root_path / "tests/gpu/torch/_compress/resources/configs"
         hydra_config_name = "Llama-3_1-8B-ffn-pruning"
 
         #
@@ -111,9 +109,7 @@ def _test_nas_convert_attn_pruning_multiprocess_job(
         puzzle_dir, llama_checkpoint_path, dataset_path = setup_test_model_and_data(
             project_root_path, tmp_path, rank, runtime
         )
-        hydra_config_dir = (
-            project_root_path / "tests/experimental/torch/_compress/resources/configs"
-        )
+        hydra_config_dir = project_root_path / "tests/gpu/torch/_compress/resources/configs"
         hydra_config_name = "Llama-3_1-8B-attn-pruning"
 
         #

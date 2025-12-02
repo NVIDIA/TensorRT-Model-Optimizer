@@ -20,7 +20,7 @@ from pathlib import Path
 
 import torch
 from _test_utils.torch.distributed.utils import spawn_multiprocess_job
-from experimental.torch._compress.compress_test_utils import setup_test_model_and_data
+from gpu.torch._compress.compress_test_utils import setup_test_model_and_data
 
 from modelopt.torch._compress import compress
 from modelopt.torch._compress.decilm.converters.convert_llama3_to_decilm import (
@@ -45,7 +45,7 @@ from modelopt.torch._compress.tools.runtime import NativeDdpRuntime
 #
 # export PYTHONPATH=$PYTHONPATH:.:/workspace/puzzletron/v1
 #
-# pytest -s -v ./tests/experimental/torch/_compress/test_compress.py::test_compress -o addopts=""
+# pytest -s -v ./tests/gpu/torch/_compress/test_compress.py::test_compress -o addopts=""
 
 
 def test_compress(project_root_path: Path, tmp_path: Path):
@@ -64,9 +64,7 @@ def _test_compress_multiprocess_job(project_root_path: Path, tmp_path: Path, ran
         puzzle_dir, llama_checkpoint_path, dataset_path = setup_test_model_and_data(
             project_root_path, tmp_path, rank, runtime
         )
-        hydra_config_dir = (
-            project_root_path / "tests/experimental/torch/_compress/resources/configs"
-        )
+        hydra_config_dir = project_root_path / "tests/gpu/torch/_compress/resources/configs"
         hydra_config_name = "Llama-3_1-8B-ffn-pruning"
 
         # Convert the Llama model to DeciLM model.

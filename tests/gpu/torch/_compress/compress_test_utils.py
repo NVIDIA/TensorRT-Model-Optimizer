@@ -118,7 +118,7 @@ def create_tokenizer(project_root_path: Path) -> PreTrainedTokenizerBase:
     """
     Create a tokenizer for the Llama model.
     """
-    tokenizer_path = project_root_path / "tests/experimental/torch/_compress/resources/tokenizer"
+    tokenizer_path = project_root_path / "tests/gpu/torch/_compress/resources/tokenizer"
     tokenizer = AutoTokenizer.from_pretrained(tokenizer_path)
     return tokenizer
 
