@@ -12,6 +12,9 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+"""Performs greedy search to find optimal multi-layer replacements under resource constraints."""
+
 # mypy: ignore-errors
 import math
 from copy import deepcopy

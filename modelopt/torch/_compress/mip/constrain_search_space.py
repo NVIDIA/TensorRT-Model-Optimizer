@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Constrains the search space for the MIP optimization."""
+
 import traceback
 
 from modelopt.torch._compress.decilm.deci_lm_hf_code.block_config import (
