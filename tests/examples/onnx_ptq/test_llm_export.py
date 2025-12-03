@@ -19,18 +19,18 @@ from _test_utils.examples.run_command import extend_cmd_parts, run_example_comma
 
 
 @pytest.mark.parametrize(
-    ("torch_dir", "dtype", "lm_head"),
+    ("hf_model_path", "dtype", "lm_head"),
     [
         ("Qwen/Qwen2-0.5B-Instruct", "fp16", "fp16"),
         ("Qwen/Qwen2-0.5B-Instruct", "fp8", "fp16"),
-        ("Qwen/Qwen2-0.5B-Instruct", "int4_awq", "fp16"),
-        ("Qwen/Qwen2-0.5B-Instruct", "nvfp4", "fp16"),
+        ("Qwen/Qwen3-0.6B", "int4_awq", "fp16"),
+        ("Qwen/Qwen3-0.6B", "nvfp4", "fp16"),
     ],
 )
-def test_llm_export_onnx(tmp_path, torch_dir, dtype, lm_head):
+def test_llm_export_onnx(tmp_path, hf_model_path, dtype, lm_head):
     cmd_parts = extend_cmd_parts(
         ["python", "llm_export.py"],
-        torch_dir=torch_dir,
+        hf_model_path=hf_model_path,
         dtype=dtype,
         lm_head=lm_head,
         output_dir=str(tmp_path),

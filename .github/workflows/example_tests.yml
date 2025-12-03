@@ -123,7 +123,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        example: [diffusers]
+        example: [diffusers, onnx_ptq]
     uses: ./.github/workflows/_example_tests_runner.yml
     secrets: inherit
     with:
