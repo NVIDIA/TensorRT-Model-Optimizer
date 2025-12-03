@@ -76,6 +76,7 @@ optional_deps = {
         "coverage",
         "pytest",
         "pytest-cov",
+        "pytest-instafail",
         "pytest-timeout",
         "timm",
         "torchvision",
