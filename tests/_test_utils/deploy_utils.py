@@ -195,6 +195,8 @@ class ModelDeployer:
                 speculative_draft_model_path=self.model_id,
                 tp_size=self.tensor_parallel_size,
                 trust_remote_code=True,
+                mem_fraction_static=0.7,
+                context_length=1024,
             )
         else:
             llm = sgl.Engine(
