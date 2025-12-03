@@ -15,23 +15,25 @@
 
 
 import pytest
-from _test_utils.examples.run_command import run_onnx_llm_export_command
+from _test_utils.examples.run_command import extend_cmd_parts, run_example_command
 
 
 @pytest.mark.parametrize(
-    ("torch_dir", "dtype", "lm_head", "output_dir", "calib_size"),
+    ("torch_dir", "dtype", "lm_head"),
     [
-        ("Qwen/Qwen2-0.5B-Instruct", "fp16", "fp16", "/tmp/qwen2-0.5b-instruct-fp16", "1"),
-        ("Qwen/Qwen2-0.5B-Instruct", "fp8", "fp16", "/tmp/qwen2-0.5b-instruct-fp8", "1"),
-        ("Qwen/Qwen2-0.5B-Instruct", "int4_awq", "fp16", "/tmp/qwen2-0.5b-instruct-int4_awq", "1"),
-        ("Qwen/Qwen2-0.5B-Instruct", "nvfp4", "fp16", "/tmp/qwen2-0.5b-instruct-nvfp4", "1"),
+        ("Qwen/Qwen2-0.5B-Instruct", "fp16", "fp16"),
+        ("Qwen/Qwen2-0.5B-Instruct", "fp8", "fp16"),
+        ("Qwen/Qwen2-0.5B-Instruct", "int4_awq", "fp16"),
+        ("Qwen/Qwen2-0.5B-Instruct", "nvfp4", "fp16"),
     ],
 )
-def test_llm_export_onnx(torch_dir, dtype, lm_head, output_dir, calib_size):
-    run_onnx_llm_export_command(
+def test_llm_export_onnx(tmp_path, torch_dir, dtype, lm_head):
+    cmd_parts = extend_cmd_parts(
+        ["python", "llm_export.py"],
         torch_dir=torch_dir,
         dtype=dtype,
         lm_head=lm_head,
-        output_dir=output_dir,
-        calib_size=calib_size,
+        output_dir=str(tmp_path),
+        calib_size=1,
     )
+    run_example_command(cmd_parts, "onnx_ptq")

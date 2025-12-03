@@ -159,4 +159,5 @@ def torch_to_onnx(model, inputs, onnx_dir, onnx_name, input_names, output_names,
             dynamic_axes=dynamic_axes,
             opset_version=19,
             do_constant_folding=True,
+            dynamo=False,
         )
