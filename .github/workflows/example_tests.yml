@@ -61,6 +61,7 @@ jobs:
     needs: [check-file-changes, wait-checks]
     if: startsWith(github.ref, 'refs/heads/pull-request/') && needs.check-file-changes.outputs.any_changed == 'true'
     strategy:
+      fail-fast: false
       matrix:
         example: [llm_distill, llm_qat, llm_sparsity, speculative_decoding]
     uses: ./.github/workflows/_example_tests_runner.yml
@@ -74,6 +75,7 @@ jobs:
   torch-non-pr:
     if: ${{ !startsWith(github.ref, 'refs/heads/pull-request/') }}
     strategy:
+      fail-fast: false
       matrix:
         example: [llm_distill, llm_qat, llm_sparsity, speculative_decoding]
     uses: ./.github/workflows/_example_tests_runner.yml
@@ -89,6 +91,7 @@ jobs:
     needs: [check-file-changes, wait-checks]
     if: startsWith(github.ref, 'refs/heads/pull-request/') && needs.check-file-changes.outputs.any_changed == 'true'
     strategy:
+      fail-fast: false
       matrix:
         example: [llm_ptq]
     uses: ./.github/workflows/_example_tests_runner.yml
@@ -102,6 +105,7 @@ jobs:
   trtllm-non-pr:
     if: ${{ !startsWith(github.ref, 'refs/heads/pull-request/') }}
     strategy:
+      fail-fast: false
       matrix:
         example: [llm_autodeploy, llm_eval, llm_ptq, vlm_ptq]
     uses: ./.github/workflows/_example_tests_runner.yml
@@ -117,8 +121,9 @@ jobs:
     needs: [check-file-changes, wait-checks]
     if: startsWith(github.ref, 'refs/heads/pull-request/') && needs.check-file-changes.outputs.any_changed == 'true'
     strategy:
+      fail-fast: false
       matrix:
-        example: [diffusers, onnx_ptq]
+        example: [diffusers]
     uses: ./.github/workflows/_example_tests_runner.yml
     secrets: inherit
     with:
@@ -130,6 +135,7 @@ jobs:
   onnx-non-pr:
     if: ${{ !startsWith(github.ref, 'refs/heads/pull-request/') }}
     strategy:
+      fail-fast: false
       matrix:
         example: [diffusers, onnx_ptq]
     uses: ./.github/workflows/_example_tests_runner.yml
