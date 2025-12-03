@@ -433,7 +433,7 @@ class LogitsAndIntermediatesLossBalancer(mtd.DistillationLossBalancer):
             total_loss = logits_loss + intermediate_loss_scaled
         else:
             kd_loss = logits_loss + intermediate_loss_scaled
-            if kd_loss > 0:  # sometimes zero during CP when one rank has all context tokens
+            if kd_loss > 0 and original_loss > 0:  # zero when one CP rank has only context tokens
                 kd_loss *= original_loss.detach() / kd_loss.detach()
             total_loss = original_loss + kd_loss * self._kd_loss_scale
 
