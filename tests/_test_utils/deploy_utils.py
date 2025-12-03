@@ -184,12 +184,25 @@ class ModelDeployer:
         quantization_method = "modelopt"
         if "FP4" in self.model_id:
             quantization_method = "modelopt_fp4"
-        llm = sgl.Engine(
-            model_path=self.model_id,
-            quantization=quantization_method,
-            tp_size=self.tensor_parallel_size,
-            trust_remote_code=True,
-        )
+        if "eagle" in self.model_id.lower():
+            llm = sgl.Engine(
+                model_path=self.base_model,
+                quantization=quantization_method,
+                speculative_algorithm="EAGLE3",
+                speculative_num_steps=3,
+                speculative_eagle_topk=1,
+                speculative_num_draft_tokens=4,
+                speculative_draft_model_path=self.model_id,
+                tp_size=self.tensor_parallel_size,
+                trust_remote_code=True,
+            )
+        else:
+            llm = sgl.Engine(
+                model_path=self.model_id,
+                quantization=quantization_method,
+                tp_size=self.tensor_parallel_size,
+                trust_remote_code=True,
+            )
         print(llm.generate(["What's the age of the earth? "]))
         llm.shutdown()
         del llm
