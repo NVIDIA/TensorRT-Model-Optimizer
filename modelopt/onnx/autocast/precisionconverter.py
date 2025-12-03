@@ -955,13 +955,6 @@ class PrecisionConverter:
         # Remove redundant casts
         self._remove_redundant_casts()
 
-        # Update value_info in model's graph
-        self._update_value_info_in_graph()
-
-    def _update_value_info_in_graph(self):
-        for vi in self.model.graph.value_info:
-            vi.type.tensor_type.elem_type = self.value_info_map[vi.name].type.tensor_type.elem_type
-
     def _cleanup_no_consumer_nodes(self):
         network_outputs = {o.name for o in self.model.graph.output}
         nodes_to_remove = [
@@ -1121,6 +1114,13 @@ class PrecisionConverter:
                                 break
                     cast_node.input[0] = pre_cast_name
                     cast_node.output[0] = original_name
+                    # Ensure correct output tensor type
+                    cast_to_precision = next(
+                        attr.i for attr in cast_node.attribute if attr.name == "to"
+                    )
+                    self.value_info_map[
+                        cast_node.output[0]
+                    ].type.tensor_type.elem_type = cast_to_precision
 
                     modified = True
                     logger.debug(f"Fixed network output names: {post_cast_name} -> {output.name}")
