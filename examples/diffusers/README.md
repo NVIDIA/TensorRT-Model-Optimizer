@@ -39,9 +39,10 @@ Install Model Optimizer with `onnx` and `hf` dependencies using `pip` from [PyPI
 
 ```bash
 pip install nvidia-modelopt[onnx,hf]
+pip install -r requirements.txt
 ```
 
-Each subsection (cache_diffusion, quantization, etc.) have their own `requirements.txt` file that needs to be installed separately.
+Each subsection (eval, etc.) may have their own `requirements.txt` file that needs to be installed separately.
 
 You can find the latest TensorRT [here](https://developer.nvidia.com/tensorrt/download).
 

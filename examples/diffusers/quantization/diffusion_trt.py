@@ -187,11 +187,13 @@ def main():
 
     if args.torch_compile:
         assert args.torch, "Torch mode must be enabled when torch_compile is used"
-    # Save the backbone of the pipeline and move it to the GPU
+    # Save the backbone (and other attributes) of the pipeline and move it to the GPU
     add_embedding = None
-    backbone = None
+    cache_context = None
     if hasattr(pipe, "transformer"):
         backbone = pipe.transformer
+        if hasattr(backbone, "cache_context"):
+            cache_context = backbone.cache_context
     elif hasattr(pipe, "unet"):
         backbone = pipe.unet
         add_embedding = backbone.add_embedding
@@ -295,14 +297,14 @@ def main():
         ignore_nesting,
     )
 
-    if hasattr(pipe, "unet") and add_embedding:
-        setattr(device_model, "add_embedding", add_embedding)
-
-    # Set the backbone to the device model
-    if hasattr(pipe, "unet"):
-        pipe.unet = device_model
-    elif hasattr(pipe, "transformer"):
+    # Set the backbone and other attributes to the device model
+    if hasattr(pipe, "transformer"):
         pipe.transformer = device_model
+        if cache_context:
+            device_model.cache_context = cache_context
+    elif hasattr(pipe, "unet"):
+        pipe.unet = device_model
+        device_model.add_embedding = add_embedding
     else:
         raise ValueError("Pipeline does not have a transformer or unet backbone")
     pipe.to("cuda")
