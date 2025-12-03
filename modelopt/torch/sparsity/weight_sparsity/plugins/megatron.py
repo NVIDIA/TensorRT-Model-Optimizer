@@ -16,39 +16,13 @@
 """Support sparsify and save/resore for Megatron."""
 
 import megatron.core.transformer.mlp as megatron_mlp
-from megatron.core.parallel_state import get_data_parallel_group
 from megatron.core.tensor_parallel.layers import ColumnParallelLinear, RowParallelLinear
 from megatron.core.transformer.utils import make_sharded_tensors_for_checkpoint
 
-from modelopt.torch.opt.plugins.megatron import _MegatronMLP
+from modelopt.torch.opt.plugins.megatron import _MegatronMLP, ensure_metadata_has_dp_cp_group
 
 from ..config import SparseGPTConfig, SparseMagnitudeConfig
 from ..module import SparseModule, SpDMRegistry
-
-
-def ensure_metadata_has_dp_cp_group(metadata):
-    """Ensure `metadata` is a dict containing `dp_cp_group` entry.
-
-    This function is adapted from megatron-lm's megatron.core.transformer.utils to avoid
-    dependency on megatron-lm's specific version.
-
-    Note:
-        This is a temporary method and will be removed once this function is merged to
-        megatron.core.transformer.utils in the main branch of megatron-lm.
-    """
-    # Create a copy to avoid modifying the original metadata dict
-    # This prevents ProcessGroup from leaking into state dict
-    if metadata is None:
-        new_metadata = {}
-    else:
-        new_metadata = dict(metadata)
-    if "dp_cp_group" not in new_metadata:
-        try:
-            new_metadata["dp_cp_group"] = get_data_parallel_group(with_context_parallel=True)
-        except (AssertionError, RuntimeError):
-            # Fallback if context parallel is not initialized
-            new_metadata["dp_cp_group"] = get_data_parallel_group()
-    return new_metadata
 
 
 class _MegatronParallelLinear(SparseModule):
