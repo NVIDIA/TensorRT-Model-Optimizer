@@ -47,7 +47,7 @@ from diffusers.models.transformers.transformer_ltx import LTXVideoTransformer3DM
 from diffusers.models.unets import UNet2DConditionModel
 from torch.onnx import export as onnx_export
 
-from modelopt.onnx.quantization.qdq_utils import fp4qdq_to_2dq
+from modelopt.onnx.export import NVFP4QuantExporter
 from modelopt.torch.quantization.export_onnx import configure_linear_module_onnx_quantizers
 from modelopt.torch.utils import torch_to
 
@@ -547,6 +547,6 @@ def modelopt_export_sd(backbone, onnx_dir, model_name, precision):
         else:
             flux_convert_rope_weight_type(onnx_model)
     if precision == "fp4":
-        onnx_model = fp4qdq_to_2dq(onnx_model)
+        onnx_model = NVFP4QuantExporter.process_model(onnx_model)
     save_onnx(onnx_model, q_output)
     shutil.rmtree(tmp_subfolder, ignore_errors=True)

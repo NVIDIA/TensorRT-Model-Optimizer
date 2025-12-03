@@ -17,13 +17,10 @@ import numpy as np
 import pytest
 from onnx import TensorProto, helper, numpy_helper
 
+from modelopt.onnx.export import NVFP4QuantExporter
 from modelopt.onnx.export.int4_exporter import INT4QuantExporter
-from modelopt.onnx.quantization.qdq_utils import (
-    _cast_fp4,
-    _cast_fp8,
-    fp4qdq_to_2dq,
-    quantize_weights_to_mxfp8,
-)
+from modelopt.onnx.export.nvfp4_exporter import _cast_fp4, _cast_fp8
+from modelopt.onnx.quantization.qdq_utils import quantize_weights_to_mxfp8
 
 
 def create_test_model_with_int4_dq_reshape_transpose_matmul(constant_scale: bool = False):
@@ -587,7 +584,7 @@ class TestQuantizeWeightsToMXFP8:
 
 
 class TestFP4QDQTo2DQ:
-    """Test suite for fp4qdq_to_2dq function."""
+    """Test suite for NVFP4QuantExporter."""
 
     @pytest.mark.parametrize("with_transpose", [False, True])
     def test_fp4qdq_conversion(self, with_transpose):
@@ -595,7 +592,7 @@ class TestFP4QDQTo2DQ:
         model = create_test_model_with_nvfp4_qdq(with_transpose=with_transpose)
 
         # Run FP4QDQ to 2DQ conversion
-        converted_model = fp4qdq_to_2dq(model)
+        converted_model = NVFP4QuantExporter.process_model(model)
 
         # Verify TRT_FP4QDQ node is removed
         fp4qdq_nodes = [node for node in converted_model.graph.node if node.op_type == "TRT_FP4QDQ"]

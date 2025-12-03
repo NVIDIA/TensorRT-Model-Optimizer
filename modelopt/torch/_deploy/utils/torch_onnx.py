@@ -41,7 +41,6 @@ from modelopt.onnx.export import (
     ONNXQuantExporter,
 )
 from modelopt.onnx.quantization.qdq_utils import (
-    fp4qdq_to_2dq,
     qdq_to_dq,
     quantize_weights_to_mxfp8,
     replace_zero_scale_with_smallest_nonzero,
@@ -561,11 +560,8 @@ def get_onnx_bytes_and_metadata(
 
     # Convert dummy TRT_FP4QDQ nodes to 2DQ format if the model is quantized in FP4 mode
     # Or convert weights to MXFP8 format if the model is quantized in MXFP8 mode
-    if is_int4_quantized(model):
+    if is_int4_quantized(model) or is_fp4_quantized(model):
         onnx_opt_graph = quantize_weights(model, onnx_opt_graph)
-    elif is_fp4_quantized(model):
-        # TODO: Implement the NVFP4QuantExporter
-        onnx_opt_graph = fp4qdq_to_2dq(onnx_opt_graph)
     elif is_mxfp8_quantized(model):
         # TODO: Implement the MXFP8QuantExporter
         onnx_opt_graph = quantize_weights_to_mxfp8(onnx_opt_graph)
