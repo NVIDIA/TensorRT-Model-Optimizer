@@ -166,4 +166,34 @@ class MXFP8QuantExporter(ONNXQuantExporter):
                         attr.s = b"tanh"
                         logger.debug(f"Updated GELU node {node.name} to use tanh approximation")
 
+        # Insert cast to fp16 after Sqrt nodes
+        cast_nodes_to_insert = []
+        for idx, node in enumerate(graph.node):
+            if node.op_type == "Sqrt":
+                sqrt_output = node.output[0]
+                cast_output = f"{sqrt_output}_cast_fp16"
+
+                # Create Cast node
+                cast_node = onnx.helper.make_node(
+                    "Cast",
+                    inputs=[sqrt_output],
+                    outputs=[cast_output],
+                    to=onnx_dtype_map["Half"],
+                    name=f"{node.name}_cast_fp16",
+                )
+                cast_nodes_to_insert.append((idx + 1, cast_node))
+
+                # Update consumers to use cast output
+                for consumer in graph.node:
+                    if consumer == node:
+                        continue
+                    for i, inp in enumerate(consumer.input):
+                        if inp == sqrt_output:
+                            consumer.input[i] = cast_output
+
+        # Insert Cast nodes in reverse order to preserve indices
+        for offset, (pos, cast_node) in enumerate(cast_nodes_to_insert):
+            graph.node.insert(pos + offset, cast_node)
+            logger.debug(f"Inserted Cast to FP16 after {cast_node.input[0]}")
+
         return onnx_model

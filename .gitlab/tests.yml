@@ -54,7 +54,7 @@ example-trtllm:
 
 example-onnx:
   extends: example-torch
-  image: nvcr.io/nvidia/tensorrt:25.08-py3
+  image: nvcr.io/nvidia/tensorrt:25.06-py3
   tags: [docker, linux, 2-gpu, sm>=89]
   parallel:
     matrix:
