@@ -137,6 +137,7 @@ def test_dbrx():
     out_2 = model_test(x)
     assert torch.allclose(out_1[0], out_2[0])
 
+
 @pytest.mark.parametrize("method", ["gradient", "kl_div"])
 @pytest.mark.parametrize("model_provider", [get_tiny_llama, get_tiny_qwen3_moe])
 def test_autoquantize_huggingface(model_provider, method):
