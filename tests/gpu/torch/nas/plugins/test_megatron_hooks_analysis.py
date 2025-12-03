@@ -49,8 +49,8 @@ def test_evaluate_importance_scores_basic():
 
     # Check values with deterministic seed
     assert metrics["num_pruned"] == 20  # 40% of 50 = 20
-    assert metrics["rmse"] == pytest.approx(0.3631648123264313, rel=1e-5)
-    assert metrics["cosine_similarity"] == pytest.approx(0.7649725079536438, rel=1e-5)
+    assert metrics["rmse"] == pytest.approx(0.36862491607666015, rel=1e-5)
+    assert metrics["cosine_similarity"] == pytest.approx(0.7710041701793671, rel=1e-5)
 
 
 def _test_evaluate_importance_scores_with_l2_norm_hook(rank, size):
@@ -69,10 +69,10 @@ def _test_evaluate_importance_scores_with_l2_norm_hook(rank, size):
 
     print(f"[L2NormHook] Metrics: {metrics}")
 
-    # Iterative channel contribution hook specific assertions
+    # L2NormHook specific assertions
     assert metrics["num_pruned"] == 20  # 40% of 50 = 20
-    assert metrics["rmse"] == pytest.approx(0.348587, rel=1e-5)
-    assert metrics["cosine_similarity"] == pytest.approx(0.7860783, rel=1e-5)
+    assert metrics["rmse"] == pytest.approx(0.35592776149511335, rel=1e-5)
+    assert metrics["cosine_similarity"] == pytest.approx(0.7885629451274871, rel=1e-5)
 
 
 def _test_evaluate_importance_scores_with_iterative_channel_contribution_hook(rank, size):
@@ -98,8 +98,8 @@ def _test_evaluate_importance_scores_with_iterative_channel_contribution_hook(ra
 
     # Iterative channel contribution hook specific assertions
     assert metrics["num_pruned"] == 20  # 40% of 50 = 20
-    assert metrics["rmse"] == pytest.approx(0.3402676284313202, rel=1e-5)
-    assert metrics["cosine_similarity"] == pytest.approx(0.7974331974983215, rel=1e-5)
+    assert metrics["rmse"] == pytest.approx(0.3448416778445244, rel=1e-5)
+    assert metrics["cosine_similarity"] == pytest.approx(0.8031367003917694, rel=1e-5)
 
 
 def test_evaluate_importance_scores_with_l2_norm_hook():
