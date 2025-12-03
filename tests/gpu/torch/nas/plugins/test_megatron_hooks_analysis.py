@@ -139,13 +139,13 @@ def _run_hook_and_evaluate(
     """
     handle = layer.register_forward_hook(hook)  # Store the handle
 
-    # Run forward passes and collect activations
-    last_activations = None
+    # Run forward passes
+    all_activations = []
     for _ in range(num_iterations):
         activations = torch.randn(
             16, 8, layer.in_features
         )  # seq=16, batch=8, in_features=50 (Megatron format)
-        last_activations = activations
+        all_activations.append(activations)
         _ = layer(activations)
 
     # Get importance scores from hook
@@ -154,10 +154,11 @@ def _run_hook_and_evaluate(
     # Remove the hook before evaluation to avoid triggering it again
     handle.remove()
 
-    # Evaluate the importance scores by simulating pruning
+    # Evaluate the importance scores by simulating pruning on all collected activations
+    # Pass the list of activations to compute averaged metrics across batches
     metrics = evaluate_importance_scores(
         layer,
-        last_activations,  # Use last batch of activations
+        all_activations,  # List of activation batches
         importance_scores,
         prune_ratio=prune_ratio,
     )
