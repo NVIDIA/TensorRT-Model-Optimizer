@@ -47,6 +47,7 @@ class ModelDeployer:
             model_id: Path to the model
             tensor_parallel_size: Tensor parallel size for distributed inference
             mini_sm: Minimum SM (Streaming Multiprocessor) requirement for the model
+            attn_backend: is for TRT LLM deployment
         """
         self.backend = backend
         self.model_id = model_id
@@ -130,12 +131,12 @@ class ModelDeployer:
             )
 
         outputs = llm.generate(COMMON_PROMPTS, sampling_params)
-
         # Print outputs
         for output in outputs:
             prompt = output.prompt
             generated_text = output.outputs[0].text
             print(f"Prompt: {prompt!r}, Generated text: {generated_text!r}")
+        del llm
 
     def _deploy_vllm(self):
         """Deploy a model using vLLM."""
@@ -172,6 +173,7 @@ class ModelDeployer:
             print(f"Model: {self.model_id}")
             print(f"Prompt: {output.prompt!r}, Generated text: {output.outputs[0].text!r}")
             print("-" * 50)
+        del llm
 
     def _deploy_sglang(self):
         """Deploy a model using SGLang."""
@@ -190,6 +192,7 @@ class ModelDeployer:
         )
         print(llm.generate(["What's the age of the earth? "]))
         llm.shutdown()
+        del llm
 
 
 class ModelDeployerList:
