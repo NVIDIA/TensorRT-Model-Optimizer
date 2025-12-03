@@ -29,14 +29,14 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import yaml
-from torch import Tensor
-from torch.nn.modules.loss import _Loss
-
-import modelopt.torch.distill as mtd
 from megatron.core import parallel_state
 from megatron.core.pipeline_parallel.schedules import get_tensor_shapes
 from megatron.core.transformer import MegatronModule, TransformerLayer
 from megatron.core.utils import get_model_config
+from torch import Tensor
+from torch.nn.modules.loss import _Loss
+
+import modelopt.torch.distill as mtd
 from modelopt.torch.distill.config import Criterion
 
 if TYPE_CHECKING:
