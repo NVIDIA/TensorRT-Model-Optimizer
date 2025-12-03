@@ -18,25 +18,167 @@
 import pytest
 import torch
 import torch.nn as nn
+from _test_utils.import_helper import skip_if_no_megatron
 
+skip_if_no_megatron()
+
+from _test_utils.torch.distributed.utils import spawn_multiprocess_job
+from megatron.core.parallel_state import initialize_model_parallel
+
+from modelopt.torch.nas.plugins.megatron_hooks import (
+    IterativeChannelContributionHook,
+    MegatronL2NormHook,
+)
 from modelopt.torch.nas.plugins.megatron_hooks_analysis import evaluate_importance_scores
 
 
 def test_evaluate_importance_scores_basic():
-    """Test basic functionality of importance score evaluation."""
+    """Test basic functionality of importance score evaluation with synthetic scores."""
     torch.manual_seed(42)
 
-    # Create a simple linear layer
-    layer = nn.Linear(in_features=100, out_features=50, bias=False)
-    activations = torch.randn(4, 8, 100)  # batch=4, seq=8, hidden=100
+    # Create a simple linear layer (same dimensions as other tests for comparability)
+    layer = nn.Linear(in_features=50, out_features=30, bias=False)
 
-    # Create importance scores: lower values = less important
-    importance_scores = torch.arange(100, dtype=torch.float32)
+    # Create synthetic hook that generates sequential importance scores
+    hook = SyntheticImportanceHook(num_features=50)
 
-    # Prune 20% (20 channels with lowest scores: 0-19)
-    metrics = evaluate_importance_scores(layer, activations, importance_scores, prune_ratio=0.2)
+    # Use shared helper to run evaluation
+    metrics = _run_hook_and_evaluate(layer, hook, num_iterations=100, prune_ratio=0.4)
+
+    print(f"[SyntheticImportanceHook] Metrics: {metrics}")
 
     # Check values with deterministic seed
-    assert metrics["num_pruned"] == 20
-    assert metrics["rmse"] == pytest.approx(0.23916207253932953)
-    assert metrics["cosine_similarity"] == pytest.approx(0.9114444255828857)
+    assert metrics["num_pruned"] == 20  # 40% of 50 = 20
+    assert metrics["rmse"] == pytest.approx(0.3631648123264313, rel=1e-5)
+    assert metrics["cosine_similarity"] == pytest.approx(0.7649725079536438, rel=1e-5)
+
+
+def _test_evaluate_importance_scores_with_l2_norm_hook(rank, size):
+    """Test evaluate_importance_scores with MegatronL2NormHook."""
+    # Initialize Megatron parallel state
+    initialize_model_parallel(tensor_model_parallel_size=1, pipeline_model_parallel_size=1)
+
+    torch.manual_seed(42)
+
+    # Create layer and hook
+    layer = nn.Linear(in_features=50, out_features=30, bias=False)
+    hook = MegatronL2NormHook(max_size=None)
+
+    # Run evaluation
+    metrics = _run_hook_and_evaluate(layer, hook, num_iterations=100, prune_ratio=0.4)
+
+    print(f"[L2NormHook] Metrics: {metrics}")
+
+    # Iterative channel contribution hook specific assertions
+    assert metrics["num_pruned"] == 20  # 40% of 50 = 20
+    assert metrics["rmse"] == pytest.approx(0.348587, rel=1e-5)
+    assert metrics["cosine_similarity"] == pytest.approx(0.7860783, rel=1e-5)
+
+
+def _test_evaluate_importance_scores_with_iterative_channel_contribution_hook(rank, size):
+    """Test evaluate_importance_scores with IterativeChannelContributionHook."""
+    # Initialize Megatron parallel state
+    initialize_model_parallel(tensor_model_parallel_size=1, pipeline_model_parallel_size=1)
+
+    torch.manual_seed(42)
+
+    # Create layer and hook
+    layer = nn.Linear(in_features=50, out_features=30, bias=False)
+    activation_hooks_kwargs = {
+        "validation_full_iters": 100,
+        "clear_gpu_memory": False,
+        "calibration_method": None,
+    }
+    hook = IterativeChannelContributionHook(layer, activation_hooks_kwargs)
+
+    # Run evaluation
+    metrics = _run_hook_and_evaluate(layer, hook, num_iterations=100, prune_ratio=0.4)
+
+    print(f"[IterativeChannelContributionHook] Metrics: {metrics}")
+
+    # Iterative channel contribution hook specific assertions
+    assert metrics["num_pruned"] == 20  # 40% of 50 = 20
+    assert metrics["rmse"] == pytest.approx(0.3402676284313202, rel=1e-5)
+    assert metrics["cosine_similarity"] == pytest.approx(0.7974331974983215, rel=1e-5)
+
+
+def test_evaluate_importance_scores_with_l2_norm_hook():
+    """Test evaluate_importance_scores using MegatronL2NormHook."""
+    spawn_multiprocess_job(
+        size=1,
+        job=_test_evaluate_importance_scores_with_l2_norm_hook,
+        backend="gloo",
+    )
+
+
+def test_evaluate_importance_scores_with_iterative_channel_contribution_hook():
+    """Test evaluate_importance_scores using IterativeChannelContributionHook."""
+    spawn_multiprocess_job(
+        size=1,
+        job=_test_evaluate_importance_scores_with_iterative_channel_contribution_hook,
+        backend="gloo",
+    )
+
+
+def _run_hook_and_evaluate(
+    layer: nn.Linear,
+    hook,
+    num_iterations: int,
+    prune_ratio: float,
+) -> dict:
+    """Shared helper to run hook, collect scores, and evaluate.
+
+    Args:
+        layer: Linear layer to test
+        hook: Hook instance (already created)
+        num_iterations: Number of forward passes
+        prune_ratio: Fraction of channels to prune
+
+    Returns:
+        Dictionary with evaluation metrics
+    """
+    handle = layer.register_forward_hook(hook)  # Store the handle
+
+    # Run forward passes and collect activations
+    last_activations = None
+    for _ in range(num_iterations):
+        activations = torch.randn(
+            16, 8, layer.in_features
+        )  # seq=16, batch=8, in_features=50 (Megatron format)
+        last_activations = activations
+        _ = layer(activations)
+
+    # Get importance scores from hook
+    importance_scores = hook.accumulate()
+
+    # Remove the hook before evaluation to avoid triggering it again
+    handle.remove()
+
+    # Evaluate the importance scores by simulating pruning
+    metrics = evaluate_importance_scores(
+        layer,
+        last_activations,  # Use last batch of activations
+        importance_scores,
+        prune_ratio=prune_ratio,
+    )
+
+    return metrics
+
+
+class SyntheticImportanceHook:
+    """Synthetic hook that generates sequential importance scores for testing.
+
+    This is a simple mock hook that doesn't compute real importance,
+    just returns torch.arange(num_features) to test the evaluation pipeline.
+    """
+
+    def __init__(self, num_features: int):
+        """Initialize with the number of features."""
+        self.num_features = num_features
+
+    def __call__(self, module, args, output):
+        """Hook callback - does nothing for synthetic hook."""
+
+    def accumulate(self) -> torch.Tensor:
+        """Return synthetic importance scores: [0, 1, 2, ..., num_features-1]."""
+        return torch.arange(self.num_features, dtype=torch.float32)
