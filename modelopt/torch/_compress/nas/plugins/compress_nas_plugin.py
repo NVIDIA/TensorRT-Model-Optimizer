@@ -23,10 +23,10 @@ and save pruned checkpoints, and by mtn.search() to perform the MIP-based NAS se
 import datetime
 from pathlib import Path
 
-import mip_and_realize_models
 import torch
 from torch import nn
 
+import modelopt.torch._compress.mip.mip_and_realize_models as mip_and_realize_models
 import modelopt.torch._compress.pruning.pruning_ckpts as pruning_ckpts
 import modelopt.torch._compress.scoring.scoring as scoring
 from modelopt.torch._compress import build_library_and_stats

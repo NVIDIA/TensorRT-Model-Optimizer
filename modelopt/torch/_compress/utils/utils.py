@@ -14,6 +14,9 @@
 # limitations under the License.
 
 import dataclasses
+import json
+import os
+from copy import deepcopy
 from typing import Any
 
 import torch
@@ -73,6 +76,49 @@ def sizeof_dtype(dtype: torch.dtype | str) -> int | float:
     if dtype == "nvfp4":
         return 1 / 1.7
     return torch.tensor([], dtype=dtype).element_size()
+
+
+def load_json(file_path: str):
+    """Load and parse a JSON file.
+
+    TODO: Consider a better place for this function.
+
+    Args:
+        file_path: Path to the JSON file to load.
+
+    Returns:
+        Parsed JSON data as a Python object, or None if the file doesn't exist.
+    """
+    if not os.path.exists(file_path):
+        print("file does not exist {file_path}")
+        return None
+
+    with open(file=file_path) as f:
+        return json.load(f)
+
+
+def solution_to_str(block_configs: list[dict[str, Any] | BlockConfig]) -> str:
+    """Convert a list of block configurations to a human-readable string representation.
+
+    TODO: Consider a better place for this function.
+    Better place for this and subsequent related function would be in __repr__ function in class
+    BlockConfig so when we print it or do str(block_config), it automatically
+    prints in this custom formatted string
+
+    Args:
+        block_configs: List of BlockConfig dataclasses or dicts containing layer configurations.
+
+    Returns:
+        Multi-line string with each block's configuration on a separate line.
+    """
+    block_configs = deepcopy(block_configs)
+    reps = []
+    for block_idx, block_config in enumerate(block_configs):
+        rep = f"block_{block_idx}:".ljust(9)
+        rep += block_config_to_str(block_config)
+        reps.append(rep)
+    rep = "\n".join(reps) + "\n"
+    return rep
 
 
 def block_config_to_str(block_config: BlockConfig | dict[str, Any] | None) -> str | None:

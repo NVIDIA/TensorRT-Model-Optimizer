@@ -24,6 +24,7 @@ from pathlib import Path
 
 from modelopt.torch._compress.decilm.deci_lm_hf_code.block_config import BlockConfig
 from modelopt.torch._compress.decilm.deci_lm_hf_code.configuration_decilm import DeciLMConfig
+from modelopt.torch._compress.mip.utils import sort_replacements
 
 
 def parse_layer_replacement(layer_replacement: dict | str) -> dict:
@@ -43,8 +44,7 @@ def parse_layer_replacement(layer_replacement: dict | str) -> dict:
     return layer_replacement
 
 
-def sort_replacements(layer_replacements: list[dict]) -> list[dict]:
-    return sorted(layer_replacements, key=lambda replacement: replacement["parent_layer_indices"])
+# sort_replacements moved to modelopt.torch._compress.mip.utils and imported above
 
 
 def extract_block_configs_and_locations(

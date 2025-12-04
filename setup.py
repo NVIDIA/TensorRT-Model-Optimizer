@@ -110,6 +110,7 @@ optional_deps = {
         "typeguard",
         "pandas",
         "immutabledict",
+        "mip",
     ],
 }
 
