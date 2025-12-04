@@ -8,6 +8,6 @@ onnx==1.17.0
 onnxruntime-gpu==1.20.1
 optimum==1.23.3
 soundfile
-torch==2.7.0+cu128
+torch==2.8.0
 torchaudio==2.7.0+cu128
-transformers==4.48.0
+transformers==4.53.0
