@@ -25,6 +25,8 @@ from typing import Any, Hashable, Iterable, Optional, TypeAlias
 
 from mip import BINARY, Model, maximize, minimize, xsum
 
+from .utils import sort_replacements
+
 ReplacementID: TypeAlias = Hashable
 Replacement: TypeAlias = dict[str, Any]
 ChosenReplacements: TypeAlias = list[Replacement]
@@ -167,10 +169,6 @@ def get_nested_key(dictionary: dict[str, Any], nested_key: str) -> Any:
 
 class InfeasibleError(Exception):
     pass
-
-
-def sort_replacements(layer_replacements: list[dict]) -> list[dict]:
-    return sorted(layer_replacements, key=lambda replacement: replacement["parent_layer_indices"])
 
 
 def usage_example():

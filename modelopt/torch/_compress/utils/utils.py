@@ -101,6 +101,9 @@ def solution_to_str(block_configs: list[dict[str, Any] | BlockConfig]) -> str:
     """Convert a list of block configurations to a human-readable string representation.
 
     TODO: Consider a better place for this function.
+    Better place for this and subsequent related function would be in __repr__ function in class
+    BlockConfig so when we print it or do str(block_config), it automatically
+    prints in this custom formatted string
 
     Args:
         block_configs: List of BlockConfig dataclasses or dicts containing layer configurations.

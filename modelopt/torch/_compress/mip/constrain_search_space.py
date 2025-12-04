@@ -204,59 +204,6 @@ def css_to_reference_ffn(gathered_metrics, ffn_pruned_arch, allow_linear_attn=Tr
     return gathered_metrics
 
 
-def css_from_reference_arch_and_reduce_only_ffns_in_range(
-    gathered_metrics,
-    reference_arch,
-    layer_start,
-    layer_end,
-    allow_only_no_ops=False,
-    solution_index=0,
-):
-    ffn_pruned_arch = load_json(reference_arch)[solution_index]
-
-    assert layer_start < layer_end
-    for block_name, block_variants in gathered_metrics.items():
-        to_delete = []  # Collect keys to delete after the loop
-        block_id = int(block_name.split("_")[1])
-
-        for variant_config, _ in block_variants.items():
-            block_ffn = variant_config.ffn
-            block_attn = variant_config.attention
-
-            reference_arch_ffn = ffn_pruned_arch["chosen_items"][block_name]["ffn"]
-            reference_arch_attn = ffn_pruned_arch["chosen_items"][block_name]["attention"]
-            reference_arch_ffn = FFNConfig(**reference_arch_ffn)
-            reference_arch_attn = AttentionConfig(**reference_arch_attn)
-
-            if (  # we reduce the search space by keeping the reference arch ffn as is
-                (
-                    (block_id < layer_start or block_id > layer_end)
-                    and (reference_arch_ffn != block_ffn or reference_arch_attn != block_attn)
-                )  # layer out of range keep as is
-                or (
-                    # layers in range keep attn as is
-                    (block_id >= layer_start and block_id <= layer_end)
-                    and (
-                        (reference_arch_attn != block_attn)
-                        or (
-                            (not block_ffn.no_op and block_ffn != reference_arch_ffn)
-                            and allow_only_no_ops
-                        )
-                    )
-                )
-            ):
-                print(f"Marking for deletion: {block_name}-{variant_config}")
-                to_delete.append(variant_config)
-
-        # Delete marked keys outside the loop
-        for key in to_delete:
-            del block_variants[key]
-
-    print("new search space in block 0", gathered_metrics["block_0"])
-    print("new search space in block 70", gathered_metrics["block_70"])
-    return gathered_metrics
-
-
 def avoid_variable_gqa(
     gathered_metrics,
     allow_no_op_attn: bool = True,
