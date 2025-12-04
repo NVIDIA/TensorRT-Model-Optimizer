@@ -625,7 +625,6 @@ def _parse_single_sequence_replacement_metrics(metrics_path: Path) -> dict:
     if len(single_sequence_replacement["child_block_configs"]) > 1:
         raise NotImplementedError(
             "Currently we only support many-to-1 replacements, but we can support many-to-many! "
-            "Talk to Mohammad or Tomer about this."
         )
     variant_metrics = {
         "block_config": BlockConfig(**single_sequence_replacement["child_block_configs"][0]),
