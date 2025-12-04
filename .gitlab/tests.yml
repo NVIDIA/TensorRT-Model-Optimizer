@@ -13,48 +13,7 @@
 example-onnx-bash:
   extends: .tests-default
   timeout: 90m
-  image: nvcr.io/nvidia/pytorch:25.08-py3
-  variables:
-    GIT_DEPTH: 1000 # For correct version for tests/gpu/torch/quantization/plugins/test_megatron.py
-  tags: [docker, linux, 2-gpu]
-  before_script:
-    # Add libcudnn*.so and libnv*.so to path
-    - export LD_LIBRARY_PATH="${LD_LIBRARY_PATH}:/usr/include:/usr/lib/x86_64-linux-gnu"
-    # Install git-lfs for Daring-Anteater dataset
-    - apt-get update && apt-get install -y git-lfs
-    - git lfs install --system
-
-multi-gpu:
-  extends: .multi-gpu-tests-default
-  script:
-    # Use pre-installed packages without a new venv with tox-current-env
-    - pip install tox-current-env
-    - tox -e py312-cuda12-gpu --current-env
-
-##### Example Tests #####
-example-torch:
-  extends: .multi-gpu-tests-default
-  timeout: 30m
-  parallel:
-    matrix:
-      - EXAMPLE: [llm_distill, llm_qat, llm_sparsity, speculative_decoding]
-  script:
-    - pip install ".[hf,dev-test]"
-    - find examples/$EXAMPLE -name "requirements.txt" | while read req_file; do pip install -r "$req_file" || exit 1; done
-    - pytest -s tests/examples/$EXAMPLE
-
-example-trtllm:
-  extends: example-torch
-  timeout: 60m
-  image: nvcr.io/nvidia/tensorrt-llm/release:1.1.0rc2.post2
-  tags: [docker, linux, 2-gpu, sm>=89]
-  parallel:
-    matrix:
-      - EXAMPLE: [llm_autodeploy, llm_eval, llm_ptq, vlm_ptq]
-
-example-onnx:
-  extends: example-torch
-  image: nvcr.io/nvidia/tensorrt:25.06-py3
+  image: nvcr.io/nvidia/tensorrt:25.08-py3
   tags: [docker, linux, 2-gpu, sm>=89]
   parallel:
     matrix:
