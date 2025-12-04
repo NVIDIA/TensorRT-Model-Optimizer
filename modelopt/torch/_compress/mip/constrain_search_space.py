@@ -204,7 +204,7 @@ def css_to_reference_ffn(gathered_metrics, ffn_pruned_arch, allow_linear_attn=Tr
     return gathered_metrics
 
 
-def css_from_refercnce_arch_and_reduce_only_ffns_in_range(
+def css_from_reference_arch_and_reduce_only_ffns_in_range(
     gathered_metrics,
     reference_arch,
     layer_start,
