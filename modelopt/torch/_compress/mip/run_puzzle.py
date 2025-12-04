@@ -60,7 +60,6 @@ this json file).
 Constraints can be specified either as 'mip_constraints' (the actual constraints that go into the MIP, e.g. 'stats.memory_mib', 'stats.runtime_ms'),
 or as "human constraints" (e.g. 'target_memory', 'target_throughput', for the full list see PuzzleConstraints._ALLOWED_HUMAN_CONSTRAINTS).
 
-An advanced use-case can be seen in puzzle/README.md under Puzzle/"Advanced Puzzle Usecase".
 """
 
 PuzzleMetrics: TypeAlias = dict[Hashable, dict[Hashable, dict[str, float]]]
