@@ -47,9 +47,9 @@ def llm_arguments():
     """Parse the arguments for the llm export script."""
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--torch_dir",
+        "--hf_model_path",
         type=str,
-        help="The folder of HF PyTorch model ckpt or HuggingFace model name/path (e.g., 'Qwen/Qwen2.5-0.5B-Instruct')",
+        help="The folder of HF PyTorch model ckpt or HuggingFace model name/path (e.g., 'Qwen/Qwen3-0.6B')",
         required=False,
     )
     parser.add_argument(
@@ -110,14 +110,14 @@ def llm_arguments():
 def get_config_path(args):
     """
     Get config.json file path from the arguments.
-    The default priority is: config_path > torch_dir/config.json > onnx_path/../config.json
+    The default priority is: config_path > hf_model_path/config.json > onnx_path/../config.json
     """
     if args.config_path and os.path.exists(args.config_path):
         return args.config_path
-    if args.torch_dir:
-        # Check if torch_dir is a local directory
-        if os.path.isdir(args.torch_dir):
-            torch_config = os.path.join(args.torch_dir, "config.json")
+    if args.hf_model_path:
+        # Check if hf_model_path is a local directory
+        if os.path.isdir(args.hf_model_path):
+            torch_config = os.path.join(args.hf_model_path, "config.json")
             if os.path.exists(torch_config):
                 return torch_config
         else:
@@ -125,19 +125,19 @@ def get_config_path(args):
             try:
                 # Download config from HuggingFace
                 config = AutoConfig.from_pretrained(
-                    args.torch_dir, trust_remote_code=args.trust_remote_code
+                    args.hf_model_path, trust_remote_code=args.trust_remote_code
                 )
 
                 # Save to temporary file
                 temp_config_path = os.path.join(
-                    tempfile.gettempdir(), f"config_{args.torch_dir.replace('/', '_')}.json"
+                    tempfile.gettempdir(), f"config_{args.hf_model_path.replace('/', '_')}.json"
                 )
                 with open(temp_config_path, "w") as f:
                     json.dump(config.to_dict(), f, indent=2)
 
                 return temp_config_path
             except Exception as e:
-                print(f"Warning: Could not download config for {args.torch_dir}: {e}")
+                print(f"Warning: Could not download config for {args.hf_model_path}: {e}")
 
     if args.onnx_path:
         onnx_config = os.path.join(os.path.dirname(args.onnx_path), "config.json")
@@ -152,7 +152,7 @@ def export_raw_llm(
     output_dir,
     dtype,
     config_path,
-    torch_dir,
+    hf_model_path,
     lm_head_precision="fp16",
     dataset_dir="",
     wrapper_cls=WrapperModelForCausalLM,
@@ -167,7 +167,7 @@ def export_raw_llm(
         output_dir: str
         dtype: str
         config_path: str
-        torch_dir: str, Used for loading tokenizer for quantization
+        hf_model_path: str, Used for loading tokenizer for quantization
         dataset_dir: str, Used for quantization
         wrapper_cls: class, Used for wrapping the model
         extra_inputs: dict, Used for extra inputs
@@ -187,11 +187,11 @@ def export_raw_llm(
     # Need to quantize model to fp8, int4_awq or nvfp4
     if dtype in ["fp8", "int4_awq", "nvfp4"]:
         tokenizer = AutoTokenizer.from_pretrained(
-            torch_dir, trust_remote_code=args.trust_remote_code
+            hf_model_path, trust_remote_code=args.trust_remote_code
         )
-        # Only check for local modelopt_state if torch_dir is a local directory
-        if os.path.isdir(torch_dir):
-            modelopt_state = os.path.join(torch_dir, "modelopt_state.pth")
+        # Only check for local modelopt_state if hf_model_path is a local directory
+        if os.path.isdir(hf_model_path):
+            modelopt_state = os.path.join(hf_model_path, "modelopt_state.pth")
             model_needs_quantization = not os.path.exists(modelopt_state)
         else:
             # For HuggingFace model names, always quantize as we can't have local state files
@@ -345,8 +345,8 @@ def check_dtype_support(args):
 
 def main(args):
     """Main function to export the LLM model to ONNX."""
-    assert args.torch_dir or args.onnx_path, (
-        "You need to provide either --torch_dir or --onnx_path to process the export script."
+    assert args.hf_model_path or args.onnx_path, (
+        "You need to provide either --hf_model_path or --onnx_path to process the export script."
     )
     start_time = time.time()
 
@@ -356,14 +356,11 @@ def main(args):
     if args.onnx_path:
         raw_onnx_path = args.onnx_path
 
-    model_loader = ModelLoader(
-        args.torch_dir,
-        args.config_path,
-    )
+    model_loader = ModelLoader(args.hf_model_path, args.config_path)
 
-    if args.torch_dir:
+    if args.hf_model_path:
         # Exporting ONNX from PyTorch model
-        model = model_loader.load_model()
+        model = model_loader.load_model(trust_remote_code=args.trust_remote_code)
         onnx_dir = args.output_dir + "_raw" if args.save_original else args.output_dir
         # Surgeon graph based on precision
         raw_onnx_path = f"{onnx_dir}/model.onnx"
@@ -373,7 +370,7 @@ def main(args):
             output_dir=onnx_dir,
             dtype=args.dtype,
             config_path=args.config_path,
-            torch_dir=args.torch_dir,
+            hf_model_path=args.hf_model_path,
             lm_head_precision=args.lm_head,
             dataset_dir=args.dataset_dir,
             wrapper_cls=WrapperModelForCausalLM,
