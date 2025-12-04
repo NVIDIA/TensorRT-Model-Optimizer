@@ -18,6 +18,18 @@ from contextlib import nullcontext
 
 import numpy as np
 import torch
+
+# This is a workaround for making the onnx export of models that use the torch RMSNorm work. We will
+# need to move on to use dynamo based onnx export to properly fix the problem. The issue has been hit
+# by both external users https://github.com/NVIDIA/TensorRT-Model-Optimizer/issues/262, and our
+# internal users from MLPerf Inference.
+#
+if __name__ == "__main__":
+    from diffusers.models.normalization import RMSNorm as DiffuserRMSNorm
+
+    torch.nn.RMSNorm = DiffuserRMSNorm
+    torch.nn.modules.normalization.RMSNorm = DiffuserRMSNorm
+
 from onnx_utils.export import (
     _create_trt_dynamic_shapes,
     generate_dummy_inputs_and_dynamic_axes_and_shapes,
