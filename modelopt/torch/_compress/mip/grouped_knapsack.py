@@ -25,6 +25,8 @@ from typing import Any, Hashable, Iterable, Optional, TypeAlias, Union
 from mip import BINARY, Model, maximize, minimize, xsum
 from tqdm import tqdm
 
+from .utils import InfeasibleError, get_nested_key
+
 Item: TypeAlias = dict[str, float | dict[str, float]]
 Group: TypeAlias = dict[Hashable, Item]
 ChosenItems: TypeAlias = dict[Hashable, Hashable]
@@ -60,10 +62,6 @@ def multi_solution_grouped_knapsack(
             {"chosen_items": chosen_items, "total_value": total_value, "total_costs": total_costs}
         )
     return solutions
-
-
-class InfeasibleError(Exception):
-    pass
 
 
 def grouped_knapsack(
@@ -173,16 +171,6 @@ def grouped_knapsack(
         assert num_differences >= minimal_diversity
 
     return chosen_items, total_value, total_costs
-
-
-def get_nested_key(dictionary: dict[str, Any], nested_key: str) -> Any:
-    """
-    If nested_key is "a.b.c" returns dictionary["a"]["b"]["c"]
-    """
-    value = dictionary
-    for key in nested_key.split("."):
-        value = value[key]
-    return value
 
 
 def get_nested_objective(dictionary: dict[str, Any], nested_key: str) -> Any:

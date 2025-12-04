@@ -25,7 +25,7 @@ from typing import Any, Hashable, Iterable, Optional, TypeAlias
 
 from mip import BINARY, Model, maximize, minimize, xsum
 
-from .utils import sort_replacements
+from .utils import InfeasibleError, consecutive_ngrams, get_nested_key, sort_replacements
 
 ReplacementID: TypeAlias = Hashable
 Replacement: TypeAlias = dict[str, Any]
@@ -157,20 +157,6 @@ def run_mip(
     ]
 
 
-def get_nested_key(dictionary: dict[str, Any], nested_key: str) -> Any:
-    """
-    If nested_key is "a.b.c" returns dictionary["a"]["b"]["c"]
-    """
-    value = dictionary
-    for key in nested_key.split("."):
-        value = value[key]
-    return value
-
-
-class InfeasibleError(Exception):
-    pass
-
-
 def usage_example():
     num_layers = 32
     num_options_per_parent_replacement = 5
@@ -206,17 +192,6 @@ def usage_example():
     print(f"{constraints=}")
     print("chosen_replacements=")
     print("\n".join([rep["replacement_id"] for rep in chosen_replacements]))
-
-
-def consecutive_ngrams(l, n):
-    """
-    splits range(l) to all consecutive n-grams.
-    consecutive_ngrams(7, 2) = [[0, 1], [1, 2], [2, 3], [3, 4], [4, 5], [5, 6]]
-    """
-    ngrams = []
-    for i in range(l - n + 1):
-        ngrams.append(list(range(i, i + n)))
-    return ngrams
 
 
 if __name__ == "__main__":
