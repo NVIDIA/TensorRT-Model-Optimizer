@@ -187,7 +187,6 @@ class ModelDeployer:
         if "eagle" in self.model_id.lower():
             llm = sgl.Engine(
                 model_path=self.base_model,
-                quantization=quantization_method,
                 speculative_algorithm="EAGLE3",
                 speculative_num_steps=3,
                 speculative_eagle_topk=1,
