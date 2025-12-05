@@ -28,8 +28,8 @@ from megatron.core.parallel_state import initialize_model_parallel
 from modelopt.torch.nas.plugins.megatron_hooks import (
     IterativeChannelContributionHook,
     MegatronL2NormHook,
+    evaluate_importance_scores,
 )
-from modelopt.torch.nas.plugins.megatron_hooks_analysis import evaluate_importance_scores
 
 
 def test_evaluate_importance_scores_basic():
