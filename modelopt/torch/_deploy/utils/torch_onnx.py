@@ -40,10 +40,7 @@ from modelopt.onnx.export import (
     NVFP4QuantExporter,
     ONNXQuantExporter,
 )
-from modelopt.onnx.quantization.qdq_utils import (
-    qdq_to_dq,
-    replace_zero_scale_with_smallest_nonzero,
-)
+from modelopt.onnx.quantization.qdq_utils import qdq_to_dq, replace_zero_scale_with_smallest_nonzero
 from modelopt.onnx.utils import (
     get_input_names,
     get_input_shapes,

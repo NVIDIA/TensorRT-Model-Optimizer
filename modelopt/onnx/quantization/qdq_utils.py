@@ -33,7 +33,6 @@ from modelopt.onnx.quantization.graph_utils import (
 )
 from modelopt.onnx.quantization.quant_utils import get_num_bits
 
-
 QUANTIZE_NODE_NAME = "QuantizeLinear"
 DEQUANTIZE_NODE_NAME = "DequantizeLinear"
 

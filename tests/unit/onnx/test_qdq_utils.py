@@ -17,10 +17,8 @@ import numpy as np
 import pytest
 from onnx import TensorProto, helper, numpy_helper
 
-from modelopt.onnx.export import NVFP4QuantExporter
-from modelopt.onnx.export.int4_exporter import INT4QuantExporter
+from modelopt.onnx.export import INT4QuantExporter, MXFP8QuantExporter, NVFP4QuantExporter
 from modelopt.onnx.export.nvfp4_exporter import _cast_fp4, _cast_fp8
-from modelopt.onnx.export.mxfp8_exporter import MXFP8QuantExporter
 
 
 def create_test_model_with_int4_dq_reshape_transpose_matmul(constant_scale: bool = False):
