@@ -246,28 +246,20 @@ def main(args):
     # Force eager execution for all model types.
     torch.compiler.set_stance("force_eager")
 
+    if args.quant_cfg:
+        assert not args.auto_quantize_bits, (
+            "currently specifying quant_cfg is only supported for simple quantization."
+        )
+        quant_cfg = mtq.config.load_config(args.quant_cfg)
+        print("quant_cfg specified, the qformat arg will be ignored")
+        QUANT_CFG_CHOICES["_custom_quant"] = quant_cfg
+        args.qformat = "_custom_quant"
+
     # Check that only one quantization format is provided for non auto_quant case
     if not args.auto_quantize_bits:
         assert len(args.qformat.split(",")) == 1, (
             "Quantization supports only one quantization format."
         )
-
-    if not args.auto_quantize_bits:
-        assert (
-            args.qformat
-            in [
-                "int8_wo",
-                "int4_awq",
-                "fp8",
-                "nvfp4",
-                "nvfp4_awq",
-                "w4a8_awq",
-                "fp8_pb_wo",
-                "w4a8_mxfp4_fp8",
-                "nvfp4_mlp_only",
-            ]
-            or args.kv_cache_qformat in KV_QUANT_CFG_CHOICES
-        ), f"Quantization format {args.qformat} not supported for HF export path"
 
     # If low memory mode is enabled, we compress the model while loading the HF checkpoint.
     calibration_only = False
@@ -720,6 +712,14 @@ if __name__ == "__main__":
             "format for optimal per-layer auto_quantize search."
         ),
         default="fp8",
+    )
+    parser.add_argument(
+        "--quant_cfg",
+        help=(
+            "Quantization configuration yaml. Please refer to modelopt/config/quantization/ for "
+            "pre-defined config yaml files."
+        ),
+        default=None,
     )
     parser.add_argument(
         "--batch_size",
