@@ -83,7 +83,8 @@ class ReferenceRunner:
                 if self.input_shapes[inp_name] != inp_shape.shape:
                     raise ValueError(
                         f"Input shape from '{inp_name}' does not match provided input shape: "
-                        f"{self.input_shapes[inp_name]} vs {list(inp_shape.shape)}."
+                        f"{self.input_shapes[inp_name]} vs {list(inp_shape.shape)}. "
+                        f"Please make sure that your calibration data matches the ONNX input shapes."
                     )
         else:
             raise ValueError("Invalid input file.")
