@@ -31,8 +31,7 @@ from modelopt.onnx.quantization.graph_utils import (
     get_tensor_producer_nodes,
     remove_redundant_cast_nodes,
 )
-from modelopt.onnx.quantization.quant_utils import compute_e8m0, get_amax, get_num_bits
-from modelopt.onnx.utils import get_attribute, has_attribute
+from modelopt.onnx.quantization.quant_utils import get_num_bits
 
 QUANTIZE_NODE_NAME = "QuantizeLinear"
 DEQUANTIZE_NODE_NAME = "DequantizeLinear"
@@ -1036,101 +1035,3 @@ def cast_initializer_to_dtype(
     input_onnx = onnx.numpy_helper.from_array(input, input_name)
     input_onnx.data_type = onnx_dtype_map[dtype]
     initializer_map[input_name].CopyFrom(input_onnx)
-
-
-def quantize_weights_to_mxfp8(
-    onnx_model: onnx.ModelProto,
-) -> onnx.ModelProto:
-    """Converts the weights to FP8 precision using MXFP8 quantization.
-
-    For TRT_MXFP8DynamicQuantize, we update the output type to FP8.
-    For TRT_MXFP8DequantizeLinear, we compute the scales in e8m0 format and saves them as a new initializer.
-    We then expand the scale to the same shape as the weight and divide the weight by the scale to get the FP8 weights.
-
-    Args:
-        graph: ONNX model protobuf.
-
-    Returns:
-        ONNX model protobuf with weights quantized to FP8 precision using MXFP8 quantization.
-    """
-    logger.info("Converting weights to MXFP8 precision")
-    graph = onnx_model.graph
-    initializer_map = {initializer.name: initializer for initializer in graph.initializer}
-    tensor_producer_map = get_tensor_producer_nodes(graph)
-    e8_m0_bias = 127
-    weight_dq_nodes = [
-        node
-        for node in graph.node
-        if node.op_type == "TRT_MXFP8DequantizeLinear"
-        and any(".weight" in input for input in node.input)
-    ]
-    gelu_nodes = [node for node in graph.node if node.op_type == "Gelu"]
-    logger.debug(f"Found {len(weight_dq_nodes)} weight DQ nodes and {len(gelu_nodes)} GELU nodes")
-
-    for node in weight_dq_nodes:
-        # Get weights and node attributes
-        weight_name = node.input[0]
-        logger.debug(f"Processing MXFP8 conversion for weight {weight_name}")
-        weight = numpy_helper.to_array(initializer_map[weight_name])
-        if has_attribute(node, "axis"):
-            quant_axis = int(get_attribute(node, "axis"))
-        else:
-            quant_axis = -1
-            logger.warning(
-                "axis attribute not found for MXFP8DequantizeLinear node. Setting axis to -1"
-            )
-
-        if has_attribute(node, "block_size"):
-            block_size = int(get_attribute(node, "block_size"))
-        else:
-            block_size = 32
-            logger.warning(
-                "block_size attribute not found for MXFP8DequantizeLinear node. Setting block_size to 32"
-            )
-
-        # Compute and save scales as uint8
-        amax = get_amax(weight, quant_axis, block_size)
-        se8m0_fp32 = compute_e8m0(amax, weight.shape, quant_axis, block_size)
-        se8m0 = se8m0_fp32.astype(np.uint8)
-
-        # Remove scale producer if it's a Constant node
-        scale_name = node.input[1]
-        scale_producer = tensor_producer_map[scale_name]
-        if scale_producer.op_type == "Constant":
-            graph.node.remove(scale_producer)
-
-        # Create a new scale tensor
-        scale_name = scale_name.replace("Constant_output_0", "scale")
-        scale_tensor = onnx.numpy_helper.from_array(se8m0, scale_name)
-        graph.initializer.append(scale_tensor)
-        node.input[1] = scale_name
-
-        # Convert weights to FP8
-        # Expand block array so that it can be broadcasted with weight
-        se8m0_fp32 = np.repeat(se8m0_fp32, block_size, axis=quant_axis)
-        scaled_weight = weight / np.exp2(se8m0_fp32 - e8_m0_bias)
-        weights_e4m3 = onnx.helper.make_tensor(
-            name=weight_name,
-            data_type=onnx_dtype_map["Float8"],
-            dims=[*scaled_weight.shape],
-            vals=_cast_fp8(scaled_weight).tobytes(),
-            raw=True,
-        )
-        initializer_map[weight_name].CopyFrom(weights_e4m3)
-        logger.debug(f"Converted {weight_name} to MXFP8")
-
-    # set output type of DQ to FP16
-    for node in graph.node:
-        if node.op_type in ["TRT_MXFP8DequantizeLinear"]:
-            for attr in node.attribute:
-                if attr.name == "output_dtype":
-                    attr.i = onnx_dtype_map["Half"]
-
-    # Currently only tanh approximation is supported for Gelu
-    for node in gelu_nodes:
-        for attr in node.attribute:
-            if attr.name == "approximate":
-                attr.s = b"tanh"
-                logger.debug(f"Updated GELU node {node.name} to use tanh approximation")
-
-    return onnx_model
