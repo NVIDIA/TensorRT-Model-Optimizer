@@ -349,6 +349,8 @@ def is_int8_quantized(model: nn.Module) -> bool:
         if (
             hasattr(module, "weight_quantizer")
             and hasattr(module, "input_quantizer")
+            and module.weight_quantizer.is_enabled
+            and module.input_quantizer.is_enabled
             and module.weight_quantizer._num_bits == 8
             and module.input_quantizer._num_bits == 8
         ):
@@ -362,6 +364,8 @@ def is_fp8_quantized(model: nn.Module) -> bool:
         if (
             hasattr(module, "weight_quantizer")
             and hasattr(module, "input_quantizer")
+            and module.weight_quantizer.is_enabled
+            and module.input_quantizer.is_enabled
             and module.weight_quantizer._num_bits == (4, 3)
             and module.input_quantizer._num_bits == (4, 3)
         ):

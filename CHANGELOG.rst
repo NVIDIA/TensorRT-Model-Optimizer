@@ -20,6 +20,7 @@ Model Optimizer Changelog (Linux)
 - Add support for PyTorch Geometric quantization.
 - Add per tensor and per channel MSE calibrator support.
 - Added support for PTQ/QAT checkpoint export and loading for running fakequant evaluation in vLLM. See ``examples/vllm_serve/README.md#load-qatptq-model-and-serve-in-vllm-wip`` for more details.
+- Added support for mixed precision quantization and ONNX export. See ``examples/onnx_ptq/README.md#mixed-precision-quantization-auto-mode`` for more details.
 
 **Documentation**
 
