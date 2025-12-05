@@ -623,7 +623,7 @@ NVFP4_MLP_ONLY_CFG = {
     "algorithm": "max",
 }
 
-NVFP4_MLP_EXPERTS_ONLY_CFG = {
+NVFP4_EXPERTS_ONLY_CFG = {
     "quant_cfg": {
         "*mlp.experts*weight_quantizer": {
             "num_bits": (2, 1),
@@ -671,7 +671,7 @@ choices: set[str] = {
     "NVFP4_MLP_WEIGHT_ONLY_CFG",
     "MXFP4_MLP_WEIGHT_ONLY_CFG",
     "NVFP4_MLP_ONLY_CFG",
-    "NVFP4_MLP_EXPERTS_ONLY_CFG",
+    "NVFP4_EXPERTS_ONLY_CFG",
 }
 
 BiasType = Literal["static", "dynamic"]
