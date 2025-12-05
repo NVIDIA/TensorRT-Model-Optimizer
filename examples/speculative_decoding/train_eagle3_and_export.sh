@@ -83,4 +83,4 @@ python scripts/ar_validate.py --model_path $OUTPUT_DIR
 echo "==== [3/3] Exporting checkpoint to deployment format ===="
 EXPORT_PATH=export/${MODEL_BASENAME}-$(date +%Y%m%d_%H%M)
 mkdir -p "$(dirname "$EXPORT_PATH")"
-python export_hf_checkpoint.py --model_path $OUTPUT_DIR --export_path $EXPORT_PATH
+python scripts/export_hf_checkpoint.py --model_path $OUTPUT_DIR --export_path $EXPORT_PATH
