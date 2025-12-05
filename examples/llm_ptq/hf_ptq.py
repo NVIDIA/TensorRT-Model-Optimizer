@@ -122,7 +122,7 @@ def auto_quantize(
             "fp8_pb_wo",
             "w4a8_mxfp4_fp8",
             "nvfp4_mlp_only",
-            "nvfp4_mlp_exports_only",
+            "nvfp4_mlp_experts_only",
         ]
         for qformat in qformat_list
     ), "One or more quantization formats provided are not supported for unified checkpoint export"
