@@ -61,7 +61,10 @@ class OutputSaveHook:
         self.saved_outputs: list[torch.Tensor] = []
 
     def __call__(
-        self, module: nn.Module, args: tuple[torch.Tensor, ...], output: torch.Tensor
+        self,
+        module: nn.Module,
+        args: tuple[torch.Tensor, ...],
+        output: torch.Tensor | tuple[torch.Tensor, ...],
     ) -> None:
         """Capture and save module output during forward pass.
 
@@ -70,7 +73,9 @@ class OutputSaveHook:
             args: Input arguments to the module's forward pass.
             output: Output tensor(s) from the module's forward pass.
         """
-        self.saved_outputs.append(output.detach().cpu())
+        # Handle tuple outputs (e.g., output, bias)
+        out = output[0] if isinstance(output, tuple) else output
+        self.saved_outputs.append(out.detach().cpu())
 
     def save(self, path: str) -> None:
         """Save collected outputs to disk."""
