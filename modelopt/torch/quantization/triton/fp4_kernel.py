@@ -348,7 +348,7 @@ def fp4_dequantize(
 
 
 @triton.jit
-def blockwise_fp4_fake_quant_kernel(
+def static_blockwise_fp4_fake_quant_kernel(
     x_ptr,  # [NUM_FP4_BLOCKS * BLOCK_SIZE]
     y_ptr,  # [NUM_FP4_BLOCKS * BLOCK_SIZE]
     scale_ptr,  # [NUM_FP4_BLOCKS]
@@ -404,7 +404,7 @@ def blockwise_fp4_fake_quant_kernel(
     tl.store(y_ptr + idx, x_dequant.to(OUT_DTYPE))
 
 
-def launch_blockwise_fp4_fake_quant(
+def launch_static_blockwise_fp4_fake_quant(
     x: torch.Tensor,
     scale: torch.Tensor,
     out_dtype: torch.dtype = torch.float16,
@@ -427,7 +427,7 @@ def launch_blockwise_fp4_fake_quant(
 
     # Ensure we're running on the correct CUDA device
     with torch.cuda.device(x.device):
-        blockwise_fp4_fake_quant_kernel[grid](
+        static_blockwise_fp4_fake_quant_kernel[grid](
             x_flat,
             y_flat,
             scale_flat,

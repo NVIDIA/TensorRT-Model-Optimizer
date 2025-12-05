@@ -654,12 +654,14 @@ class TensorQuantizer(nn.Module):
                 getattr(self, "_onnx_quantizer_type", None),
                 self._pass_through_bwd,
             )
-        elif self._num_bits == (2, 1):
+        elif self._num_bits == (2, 1) and self.is_static_block_quant:
             from modelopt.torch.quantization.triton.fp4_kernel import (
-                launch_blockwise_fp4_fake_quant,
+                launch_static_blockwise_fp4_fake_quant,
             )
 
-            outputs = launch_blockwise_fp4_fake_quant(inputs, amax / 6.0, out_dtype=inputs.dtype)
+            outputs = launch_static_blockwise_fp4_fake_quant(
+                inputs, amax / 6.0, out_dtype=inputs.dtype
+            )
         elif isinstance(self._num_bits, tuple):
             # Float-point quantization, e.g., FP8
             E, M = self._num_bits  # noqa: N806
