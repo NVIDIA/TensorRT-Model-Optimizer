@@ -131,8 +131,10 @@ Please reference our [framework scripts](#framework-scripts) and our [docs](http
 | QwQ | ✅ | - | - | - | ✅ |
 | T5 | ✅ | ✅ | ✅ | ✅ | - |
 | Whisper | ✅ | ❌ | ❌ | ❌ | - |
+| Kimi-K2-Thinking-BF16 | ✅ | ❌ | ❌ | ❌ | ✅ |
 
 > *This is a subset of the models supported. For the full list please check the [TensorRT-LLM support matrix](https://nvidia.github.io/TensorRT-LLM/reference/precision.html#support-matrix)*
+> We recommend upcasting Kimi-K2-Thinking from INT4 to BF16 before running quantization.
 
 > *<sup>1.</sup>The w4a8_awq is an experimental quantization scheme that may result in a higher accuracy penalty.* \
 > *<sup>2.</sup>For some models, there is only support for exporting quantized checkpoints.* \
