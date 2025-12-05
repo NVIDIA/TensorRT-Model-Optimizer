@@ -22,28 +22,41 @@ This module provides:
 Usage Example:
 --------------
 
-Step 1: Capture outputs using OutputSaveHook in your training/inference script:
+Step 1: Capture outputs from multiple layers:
 
-    from compare_module_outputs import OutputSaveHook
+    from modelopt.torch.nas.plugins.megatron_hooks.compare_module_outputs import (
+        OutputSaveHook,
+        save_multi_layer_outputs,
+    )
 
-    # Create hook instance
-    hook = OutputSaveHook()
-
-    # Register on target module
-    model.decoder.layers[0].mlp.linear_fc2.register_forward_hook(hook)
+    # Register hooks on all target layers
+    hooks = {}
+    for name, module in model.named_modules():
+        if name.endswith('mlp.linear_fc2'):
+            hook = OutputSaveHook(layer_name=name)
+            module.register_forward_hook(hook)
+            hooks[name] = hook
 
     # Run inference/training
     model(input_data)
 
-    # Save captured outputs
-    hook.save("output_unpruned.pt")
+    # Save all layer outputs
+    save_multi_layer_outputs(hooks, "output_unpruned.pt")
 
 Step 2: Compare outputs from different model variants:
 
     python compare_module_outputs.py \
         --reference output_unpruned.pt \
-        --compare output_l2norm.pt
+        --compare output_l2norm.pt \
+        --output-json comparison_stats.json
 
+The saved file format:
+{
+    'decoder.layers.0.mlp.linear_fc2': Tensor([steps, seq_len, batch, hidden]),
+    'decoder.layers.1.mlp.linear_fc2': Tensor([...]),
+    ...
+    'metadata': {'num_layers': N, 'num_steps': M, 'layer_names': [...]}
+}
 """
 
 import argparse
@@ -56,8 +69,13 @@ import torch.nn.functional as F
 class OutputSaveHook:
     """Hook to capture and save module outputs during forward pass."""
 
-    def __init__(self) -> None:
-        """Initialize the output save hook."""
+    def __init__(self, layer_name: str) -> None:
+        """Initialize the output save hook.
+
+        Args:
+            layer_name: Hierarchical name of the layer (e.g., 'decoder.layers.0.mlp.linear_fc2').
+        """
+        self.layer_name = layer_name
         self.saved_outputs: list[torch.Tensor] = []
 
     def __call__(
@@ -77,11 +95,33 @@ class OutputSaveHook:
         out = output[0] if isinstance(output, tuple) else output
         self.saved_outputs.append(out.detach().cpu())
 
-    def save(self, path: str) -> None:
-        """Save collected outputs to disk."""
-        output_tensor = torch.stack(self.saved_outputs)
-        torch.save(output_tensor, path)
-        print(f"Saved {len(self.saved_outputs)} outputs with shape {output_tensor.shape} to {path}")
+    def get_stacked_outputs(self) -> torch.Tensor:
+        """Stack all saved outputs into a single tensor."""
+        return torch.stack(self.saved_outputs)
+
+
+def save_multi_layer_outputs(hooks: dict[str, OutputSaveHook], path: str) -> None:
+    """Save outputs from multiple layers to a single file.
+
+    Args:
+        hooks: Dictionary mapping layer names to their hooks.
+        path: Path to save the outputs.
+    """
+    output_dict = {name: hook.get_stacked_outputs() for name, hook in hooks.items()}
+
+    # Add metadata
+    output_dict["metadata"] = {
+        "num_layers": len(hooks),
+        # Number of forward passes (generation steps) - all hooks have same count, so use first hook
+        "num_steps": len(next(iter(hooks.values())).saved_outputs) if hooks else 0,
+        "layer_names": list(hooks.keys()),
+    }
+
+    torch.save(output_dict, path)
+    print(f"\nSaved outputs from {len(hooks)} layers to {path}")
+    for name, tensor in output_dict.items():
+        if name != "metadata":
+            print(f"  {name}: {tensor.shape}")
 
 
 def compute_rmse(tensor1: torch.Tensor, tensor2: torch.Tensor) -> float:
@@ -127,41 +167,84 @@ def main():
         required=True,
         help="Path to output tensor to compare against reference",
     )
+    parser.add_argument(
+        "--output-json",
+        type=str,
+        default=None,
+        help="Path to save comparison statistics as JSON",
+    )
     args = parser.parse_args()
 
-    # Load reference tensor
+    # Load reference data
     print(f"\nLoading reference: {args.reference}")
-    ref_tensor = torch.load(args.reference, map_location="cpu")
-    print(f"Reference shape: {ref_tensor.shape}")
+    ref_data = torch.load(args.reference, map_location="cpu")
 
-    # Load comparison tensor
-    print(f"\nLoading compare: {args.compare}")
-    comp_tensor = torch.load(args.compare, map_location="cpu")
-    print(f"Compare shape: {comp_tensor.shape}")
+    # Load comparison data
+    print(f"Loading compare: {args.compare}")
+    comp_data = torch.load(args.compare, map_location="cpu")
 
-    if ref_tensor.shape != comp_tensor.shape:
-        print("\nERROR: Shape mismatch! Cannot compare.")
+    # Compare multi-layer outputs
+    compare_multi_layer(ref_data, comp_data, args.output_json)
+
+
+def compare_multi_layer(ref_data: dict, comp_data: dict, output_json: str | None = None):
+    """Compare multi-layer outputs."""
+    import json
+
+    ref_layers = [k for k in ref_data if k != "metadata"]
+    comp_layers = [k for k in comp_data if k != "metadata"]
+
+    if set(ref_layers) != set(comp_layers):
+        print("\nERROR: Layer mismatch!")
+        print(f"Reference layers: {ref_layers}")
+        print(f"Compare layers: {comp_layers}")
         return
 
-    # Compute metrics
-    rmse = compute_rmse(ref_tensor, comp_tensor)
-    cos_sim = compute_cosine_similarity(ref_tensor, comp_tensor)
+    results = {"aggregated": {"rmse": [], "cosine_sim_mean": []}, "per_layer": {}}
 
-    print(f"\n{'=' * 70}")
-    print("Comparison Results")
-    print(f"{'=' * 70}")
-    print(f"\nRMSE: {rmse:.6f}")
-    print("\nCosine Similarity:")
-    print(f"  Mean: {cos_sim['mean']:.6f}")
-    print(f"  Min:  {cos_sim['min']:.6f}")
-    print(f"  Max:  {cos_sim['max']:.6f}")
-    print(f"  Std:  {cos_sim['std']:.6f}")
+    # Per-layer comparison
+    for layer_name in sorted(ref_layers):
+        ref_tensor = ref_data[layer_name]
+        comp_tensor = comp_data[layer_name]
 
-    # Compute per-step metrics
-    print("\nPer-step RMSE:")
-    for i in range(ref_tensor.shape[0]):
-        step_rmse = compute_rmse(ref_tensor[i], comp_tensor[i])
-        print(f"  Step {i}: {step_rmse:.6f}")
+        if ref_tensor.shape != comp_tensor.shape:
+            print(f"ERROR: {layer_name} shape mismatch! Skipping.")
+            continue
+
+        rmse = compute_rmse(ref_tensor, comp_tensor)
+        cos_sim = compute_cosine_similarity(ref_tensor, comp_tensor)
+
+        results["per_layer"][layer_name] = {"rmse": rmse, "cosine_sim": cos_sim}
+        results["aggregated"]["rmse"].append(rmse)
+        results["aggregated"]["cosine_sim_mean"].append(cos_sim["mean"])
+
+    # Aggregated statistics
+    if results["aggregated"]["rmse"]:
+        rmse_array = torch.tensor(results["aggregated"]["rmse"])
+        cos_sim_array = torch.tensor(results["aggregated"]["cosine_sim_mean"])
+
+        results["aggregated"]["rmse_stats"] = {
+            "mean": rmse_array.mean().item(),
+            "std": rmse_array.std().item(),
+            "min": rmse_array.min().item(),
+            "max": rmse_array.max().item(),
+        }
+        results["aggregated"]["cosine_sim_stats"] = {
+            "mean": cos_sim_array.mean().item(),
+            "std": cos_sim_array.std().item(),
+            "min": cos_sim_array.min().item(),
+            "max": cos_sim_array.max().item(),
+        }
+
+    # Save to JSON if requested
+    if output_json:
+        # Remove raw lists for JSON serialization
+        results["aggregated"].pop("rmse", None)
+        results["aggregated"].pop("cosine_sim_mean", None)
+
+        with open(output_json, "w") as f:
+            json.dump(results, f, indent=2)
+        print(f"Saved comparison results to {output_json}")
 
 
 if __name__ == "__main__":
