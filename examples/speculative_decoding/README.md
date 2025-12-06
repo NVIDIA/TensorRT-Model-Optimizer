@@ -244,23 +244,32 @@ To add a system prompt, use the `--system_prompt <system_prompt_text>` argument.
 
 For large scale data generation, please see [SLURM prepare data](SLURM_prepare_data.md) for SLURM support.
 
+### Configuring Draft Model
+
+For EAGLE‑1 and EAGLE‑3 we provide a [default model architecture config](https://github.com/NVIDIA/TensorRT-Model-Optimizer/blob/main/modelopt/torch/speculative/config.py#L37) in ModelOpt. You can override default settings by providing an additional JSON dict. E.g. using a different MLP intermediate size for the draft model:
+
+```json
+{
+    "intermediate_size": 28672
+}
+```
+
 ### Draft Vocabulary Compression
 
-We can optionally use smaller vocab size for the draft model for faster training and inference. E.g. Llama3.2-1B has a vocab size of 128256. In this example, we construct a draft vocab mapping of size 32k by finding the most commonly appeared vocabs in our training set:
+For EAGLE‑1 and EAGLE‑3 we can optionally use smaller vocab size for the draft model for faster training and inference. E.g. Llama3.2-1B has a vocab size of 128256. In this example, we construct a draft vocab mapping of size 32k by finding the most commonly appeared vocabs in our training set:
 
 ```bash
 python scripts/calibrate_draft_vocab.py --model meta-llama/Llama-3.2-1B-Instruct --data input_conversations/daring-anteater.jsonl --draft_vocab_size 32000 --save_dir draft_vocab_cache
 ```
 
-This will produce a `d2t.pt` file in `save_dir`, which is the mapping from draft token to target token. During inference, draft tokens can be mapped back to target tokens by `target_token = draft_token + d2t[draft_token]`.
+This will produce a `d2t.pt` file representing the mapping from draft token to target token. During inference, draft tokens can be mapped back to target tokens by `target_token = draft_token + d2t[draft_token]`.
 
-### Configuring Draft Model
-
-For EAGLE‑1 and EAGLE‑3 we provide a [default model architecture config](https://github.com/NVIDIA/TensorRT-Model-Optimizer/blob/main/modelopt/torch/speculative/config.py#L37) in ModelOpt. You can override default settings by providing an additional JSON dict. In this example, we override `draft_vocab_size` in `eagle_config.json`:
+To train with compressed draft vocab, set the following two fields in `eagle_config.json`:
 
 ```json
 {
-    "draft_vocab_size": 32000
+    "draft_vocab_size": 32000,
+    "draft_vocab_cache_path": "<path_to_d2t.pt>"
 }
 ```
 
